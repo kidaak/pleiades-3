@@ -1,0 +1,3 @@
+#!/bin/sh
+
+java -Xms1000M -Xmx1000M -Dhazelcast.super.client=true -Dhazelcast.logging.type=none -jar Pleiades-0.1.jar -m

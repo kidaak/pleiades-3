@@ -1,0 +1,8 @@
+target
+pleiades
+data
+*.txt
+*.log
+*.jar
+*.xml
+*.run
