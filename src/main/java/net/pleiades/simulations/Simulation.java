@@ -8,8 +8,8 @@
  */
 package net.pleiades.simulations;
 
-import java.net.InetSocketAddress;
 import java.util.List;
+import java.util.Properties;
 import net.pleiades.tasks.Task;
 
 /**
@@ -20,14 +20,15 @@ public interface Simulation {
     Task getUnfinishedTask();
     int getSamples();
     int addUnfinishedTask();
+    int removeUnfinishedTask();
     int unfinishedCount();
     boolean hasUnfinishedTasks();
-    boolean addToMembersList(InetSocketAddress inetSocketAddress);
-    boolean removeFromMembersList(InetSocketAddress inetSocketAddress);
     boolean isComplete();
     boolean jobComplete();
-    boolean generateTasks();
-    boolean completeTask(Task t);
+    //boolean generateTasks();
+    boolean completeTask(Task t, Properties p);
+    //boolean isTasksCreated();
+    int getSimulationNumber();
     String getID();
     String getJobID();
     String getOwner();
@@ -35,10 +36,12 @@ public interface Simulation {
     String getOutputFileName();
     String getOutputPath();
     String getJobName();
-    List<InetSocketAddress> getMembers();
+    String getFileKey();
     void writeBinary(String fileName);
     void deleteBinary(String fileName);
     List<String> getResults();
+    void setResults(List<String> results);
     Simulation emptyClone();
-    List<InetSocketAddress> checkMembers();
+    String getCilibInput();
+    //Task getSimulationTask();
 }

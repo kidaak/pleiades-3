@@ -8,13 +8,15 @@
  */
 package net.pleiades.results;
 
+import com.hazelcast.core.IMap;
+import java.util.List;
 import net.pleiades.simulations.Simulation;
 
 /**
  *
  * @author bennie
  */
-public interface Gatherer {
+public interface SampleGatherer {
     //Simulation resultsAvailable();
-    Simulation gatherResults(Simulation s);
+    Simulation gatherResults(IMap<String, List<Simulation>> simulationsMap, IMap<String, Simulation> completedMap, Simulation s) throws Throwable;
 }

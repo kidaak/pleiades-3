@@ -10,9 +10,8 @@ package net.pleiades.simulations.selection;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import net.pleiades.simulations.Simulation;
-import net.sourceforge.cilib.math.random.generator.MersenneTwister;
-import net.sourceforge.cilib.math.random.generator.RandomProvider;
 
 /**
  *
@@ -22,7 +21,8 @@ public class EqualProbabilitySelector implements SimulationSelector {
 
     @Override
     public String getKey(Map<String, List<Simulation>> jobs) {
-        RandomProvider random = new MersenneTwister();
+        //RandomProvider random = new MersenneTwister();
+        Random random = new Random();
 
         Object[] keySet = jobs.keySet().toArray();
         int keys = jobs.keySet().size();

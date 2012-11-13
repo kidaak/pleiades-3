@@ -4,7 +4,7 @@
            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
     <group>
         <name>Pleiades</name>
-        <password>pleiades12358</password>
+        <password></password>
     </group>
     <network>
         <port auto-increment="true">5701</port>
@@ -14,21 +14,7 @@
                 <multicast-port>54327</multicast-port>
             </multicast>
             <tcp-ip enabled="true">
-                <interface>137.215.40.213</interface>
-		<interface>137.215.40.212</interface>
-                <interface>137.215.40.136</interface>
-                <interface>137.215.40.175</interface>
-                <interface>137.215.40.93</interface>
-                <interface>137.215.40.181</interface>
-                <interface>137.215.40.188</interface>
-                <interface>137.215.40.66</interface>
-                <interface>137.215.40.67</interface>
-                <interface>137.215.40.58</interface>
-                <interface>137.215.40.154</interface>
-                <interface>137.215.40.63</interface>
-                <interface>137.215.40.36</interface>
-		<interface>137.215.40.174</interface>
-		<!--<interface>137.215.137.232</interface>-->
+                <!-- include interfaces here -->
             </tcp-ip>
              <aws enabled="false">
 		        <access-key>my-access-key</access-key>
@@ -96,6 +82,10 @@
         -->
         <backing-map-ref>default</backing-map-ref>
     </queue>
+    <queue name="errorQueue">
+        <max-size-per-jvm>0</max-size-per-jvm>
+        <backing-map-ref>default</backing-map-ref>
+    </queue>
     <map name="default">
         <!--
             Number of backups. If 1 is set as the backup-count for example,
@@ -138,7 +128,7 @@
             If 25 is set for example, 25% of the entries will
             get evicted.
         -->
-        <eviction-percentage>25</eviction-percentage>
+        <eviction-percentage>0</eviction-percentage>
         <!--
             While recovering from split-brain (network partitioning),
             map entries in the small cluster will merge into the bigger cluster
@@ -155,6 +145,60 @@
             hz.HIGHER_HITS   ; entry with the higher hits wins.
             hz.LATEST_UPDATE ; entry with the latest update wins.
         -->
+        <merge-policy>hz.ADD_NEW_ENTRY</merge-policy>
+    </map>
+    <map name="completedMap">
+	<map-store enabled="true">
+            <!--
+               Name of the class implementing MapLoader and/or MapStore. 
+               The class should implement at least of these interfaces and
+               contain no-argument constructor. Note that the inner classes are not supported.
+            -->
+            <class-name>net.pleiades.persistence.CompletedMapPersistence</class-name>
+            <write-delay-seconds>0</write-delay-seconds>
+        </map-store>
+        <backup-count>1</backup-count>
+        <time-to-live-seconds>0</time-to-live-seconds>
+        <max-idle-seconds>0</max-idle-seconds>
+        <eviction-policy>LRU</eviction-policy>
+        <max-size policy="cluster_wide_map_size">0</max-size>
+        <eviction-percentage>25</eviction-percentage>
+        <merge-policy>hz.ADD_NEW_ENTRY</merge-policy>
+    </map>
+    <map name="simulationsMap">
+        <backup-count>1</backup-count>
+        <time-to-live-seconds>0</time-to-live-seconds>
+        <max-idle-seconds>0</max-idle-seconds>
+        <eviction-policy>NONE</eviction-policy>
+        <max-size policy="cluster_wide_map_size">0</max-size>
+        <eviction-percentage>0</eviction-percentage>
+        <merge-policy>hz.ADD_NEW_ENTRY</merge-policy>
+    </map>
+    <map name="runningMap">
+        <backup-count>1</backup-count>
+        <time-to-live-seconds>0</time-to-live-seconds>
+        <max-idle-seconds>0</max-idle-seconds>
+        <eviction-policy>NONE</eviction-policy>
+        <max-size policy="cluster_wide_map_size">0</max-size>
+        <eviction-percentage>0</eviction-percentage>
+        <merge-policy>hz.ADD_NEW_ENTRY</merge-policy>
+    </map>
+    <map name="fileMap">
+        <backup-count>1</backup-count>
+        <time-to-live-seconds>0</time-to-live-seconds>
+        <max-idle-seconds>0</max-idle-seconds>
+        <eviction-policy>NONE</eviction-policy>
+        <max-size policy="cluster_wide_map_size">0</max-size>
+        <eviction-percentage>0</eviction-percentage>
+        <merge-policy>hz.ADD_NEW_ENTRY</merge-policy>
+    </map>
+    <map name="simulationsMap">
+        <backup-count>1</backup-count>
+        <time-to-live-seconds>0</time-to-live-seconds>
+        <max-idle-seconds>0</max-idle-seconds>
+        <eviction-policy>NONE</eviction-policy>
+        <max-size policy="cluster_wide_map_size">0</max-size>
+        <eviction-percentage>0</eviction-percentage>
         <merge-policy>hz.ADD_NEW_ENTRY</merge-policy>
     </map>
     <!-- Add your own semaphore configurations here:
@@ -175,6 +219,6 @@
     -->
     <properties>
 	<property name="hazelcast.executor.client.thread.count">500</property>
+	<property name="hazelcast.mancenter.enabled">true</property>
     </properties>
-    <management-center enabled="true">http://137.215.40.213:8080/mancenter</management-center>
 </hazelcast>

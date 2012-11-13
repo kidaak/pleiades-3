@@ -20,7 +20,7 @@ import net.pleiades.utility.SHA256;
  *
  * @author bennie
  */
-public class MySQLCommunicator implements DBCommunicator {
+public class MySQLCommunicator implements UserDBCommunicator {
     Connection connection;
     Properties properties;
 
@@ -83,6 +83,29 @@ public class MySQLCommunicator implements DBCommunicator {
             e.printStackTrace();
         }
         
+        return false;
+    }
+
+    @Override
+    public boolean silentAuthenticateUser(String user, String password) {
+        try {
+            String hash = SHA256.getHashValue(password);
+
+            Statement statement = connection.createStatement();
+            ResultSet results = statement.executeQuery("SELECT password FROM users WHERE username = '" + user + "'");
+
+            if (results.next()) {
+                String pass = results.getString("password");
+
+                if (pass.equals(hash.toString())) {
+                    return true;
+                }
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         return false;
     }
 

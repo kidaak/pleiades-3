@@ -12,8 +12,12 @@ public enum State {
     COMPLETING,
     COMPLETED,
     EXECUTING,
-    ACQUIRING,
+    REQUESTING,
+    REQUEST_SENT,
+    JOB_RECEIVED,
     IDLE,
     PREPARING,
-    CHECKING
+    CHECKING,
+    WORKING,
+    PAUSED
 }

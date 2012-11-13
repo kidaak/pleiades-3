@@ -12,10 +12,11 @@ package net.pleiades.database;
  *
  * @author bennie
  */
-public interface DBCommunicator {
+public interface UserDBCommunicator {
     boolean connect();
     boolean userExists(String user);
     boolean authenticateUser(String user);
+    boolean silentAuthenticateUser(String user, String password);
     String registerNewUser();
     String getUserEmail(String user);
 }

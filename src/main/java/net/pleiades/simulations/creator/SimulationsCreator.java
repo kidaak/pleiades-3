@@ -20,6 +20,6 @@ import net.pleiades.simulations.Simulation;
  */
 public interface SimulationsCreator {
 
-    List<Simulation> createSimulations(File input, String fileKey);//byte[] binary);
+    List<Simulation> createSimulations(File input, String fileKey);
     
 }

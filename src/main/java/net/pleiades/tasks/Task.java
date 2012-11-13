@@ -16,10 +16,12 @@ import net.pleiades.simulations.Simulation;
  * @author bennie
  */
 public interface Task {
-    String execute(Properties p);
+    boolean execute(Properties p);
     String getResults();
+    String getError();
     String getProgress();
     String getId();
+    String getInput();
     void writeFile();
     void deleteFile();
     Simulation getParent();

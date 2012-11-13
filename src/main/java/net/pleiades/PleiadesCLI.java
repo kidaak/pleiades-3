@@ -10,9 +10,11 @@ package net.pleiades;
 
 import com.google.common.base.Preconditions;
 import com.hazelcast.core.Hazelcast;
+import com.hazelcast.core.ITopic;
 import java.util.Properties;
 import net.pleiades.cluster.HazelcastCommunicator;
-import net.pleiades.database.DBCommunicator;
+import net.pleiades.database.UserDBCommunicator;
+import net.pleiades.persistence.CompletedMapPersistence;
 import org.apache.commons.cli.*;
 
 /**
@@ -20,7 +22,7 @@ import org.apache.commons.cli.*;
  * @author bennie
  */
 public class PleiadesCLI {
-    static final String VERSION = "0.1.1";
+    static final String VERSION = "0.2";
     static final int MIN_MEMBERS = 2;
 
     public static void main(String args[]) {
@@ -38,7 +40,7 @@ public class PleiadesCLI {
 
     private static void user(Properties properties, CommandLine cli, String user) {
         HazelcastCommunicator cluster = new HazelcastCommunicator();
-        DBCommunicator database = Utils.authenticate(properties, user);
+        UserDBCommunicator database = Utils.authenticate(properties, user);
 
         cluster.connect();
         int clusterSize = Hazelcast.getCluster().getMembers().size();
@@ -56,11 +58,18 @@ public class PleiadesCLI {
             if (cli.hasOption("jar")) {
                 jar = cli.getOptionValue("jar");
             }
+            
+            boolean cont = cli.hasOption("continue");
 
             User.uploadJob(properties, input, jar, user, database.getUserEmail(user));
         } else {
-            User.showDetails(user);
+            //User.showDetails(user);
         }
+    }
+    
+    private static void continueJob(CommandLine cli) {
+        ITopic continueTopic = Hazelcast.getTopic(Config.continueTopic);
+        continueTopic.publish(cli.getOptionValue("continue"));
     }
 
     private static void handleCommandline(Options options, CommandLine cli, String args[]) {
@@ -78,20 +87,25 @@ public class PleiadesCLI {
         } else {
             properties = Config.getConfiguration("pleiades.conf");
         }
+        
+        CompletedMapPersistence.setProperties(properties); //bit of a hack :-/
 
         if (cli.hasOption("worker")) {
-            Preconditions.checkState(cli.getOptions().length == 1, "Option --worker must be used without any other options.");
-            new WorkerPool(properties, Integer.parseInt(cli.getOptionValue("worker", "1")), false).execute();
+            //Preconditions.checkState(cli.getOptions().length == 1, "Option --worker must be used without any other options.");
+            new WorkerPool(properties, Integer.parseInt(cli.getOptionValue("worker", "1")), cli.hasOption("quiet")).execute();
         } else if (cli.hasOption("register")) {
             Preconditions.checkState(cli.getOptions().length == 1, "Option --register must be used without any other options.");
             Utils.connectToDatabase(properties).registerNewUser();
             System.out.println("Thank you for registering on Pleiades! You may now log in with your new username.");
         } else if (cli.hasOption("gatherer")) {
-            Preconditions.checkState(cli.getOptions().length == 1, "Option --gatherer must be used without any other options.");
-            new ResultsListener(properties).execute();
+            Preconditions.checkState(cli.getOptions().length < 3, "Too many options");
+            if (cli.getOptions().length == 2) {
+                Preconditions.checkState(cli.hasOption("continue"), "Gatherer can only be used with option --continue");
+            }
+            new Gatherer(properties).start(cli.hasOption("continue"));
         } else if (cli.hasOption("monitor")) {
             Preconditions.checkState(cli.getOptions().length == 1, "Option --monitor must be used without any other options.");
-            new Monitor().execute();
+            System.out.println("Monitor is no longer supported in cli mode."); System.exit(0);
         } else if (cli.hasOption("user")) {
             String user = cli.getOptionValue("user");
             user(properties, cli, user);
@@ -99,5 +113,4 @@ public class PleiadesCLI {
             System.out.println("Error: You must specify a user or start Pleiades in worker mode! Use --help for more options.");
         }
     }
-
 }

@@ -97,10 +97,16 @@ public class XMLSimulationsCreator implements SimulationsCreator {
                     }
 
                     jobOutputPath = output.getAttributes().getNamedItem("file").getNodeValue();
-                    if (jobOutputPath.endsWith("/")) jobOutputPath = jobOutputPath.substring(0, jobOutputPath.length() - 1);
+                    if (jobOutputPath.endsWith("/")) {
+                        jobOutputPath = jobOutputPath.substring(0, jobOutputPath.length() - 1);
+                    }
+                    //System.out.println("\nOutputPath: " + jobOutputPath);
                     
                     jobOutputFileName = jobOutputPath;
-                    if (jobOutputFileName.contains("/")) jobOutputFileName = jobOutputFileName.substring(jobOutputFileName.lastIndexOf("/") + 1);
+                    if (jobOutputFileName.contains("/")) {
+                        jobOutputFileName = jobOutputFileName.substring(jobOutputFileName.lastIndexOf("/") + 1);
+                    }
+                    //System.out.println("\nOutputFileName: " + jobOutputFileName);
 
                     output.getAttributes().getNamedItem("file").setNodeValue("pleiades/" + s + ".pleiades");
 
@@ -119,7 +125,7 @@ public class XMLSimulationsCreator implements SimulationsCreator {
 
                     transformer.transform(source, new StreamResult(cilibInput));
                     
-                    sims.add(new CilibSimulation(cilibInput.toString(), fileKey/*run*/, jobOutputFileName, jobOutputPath, samples, owner, ownerEmail, id + "_" + s, name));
+                    sims.add(new CilibSimulation(cilibInput.toString(), fileKey, jobOutputFileName, jobOutputPath, samples, owner, ownerEmail, id + "_" + s, name));
                 }
             }
         }

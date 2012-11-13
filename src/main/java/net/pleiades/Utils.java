@@ -8,30 +8,24 @@
  */
 package net.pleiades;
 
-import com.hazelcast.core.Hazelcast;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
-import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.UnknownHostException;
-import java.util.List;
-import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
-import java.util.concurrent.locks.Lock;
 import jcifs.smb.NtlmPasswordAuthentication;
 import jcifs.smb.SmbException;
 import jcifs.smb.SmbFile;
 import jcifs.smb.SmbFileInputStream;
-import net.pleiades.database.DBCommunicator;
+import net.pleiades.database.UserDBCommunicator;
 import net.pleiades.database.MySQLCommunicator;
 import net.pleiades.simulations.Simulation;
 
 public class Utils {
     
-    public static DBCommunicator connectToDatabase(Properties p) {
-        DBCommunicator db = new MySQLCommunicator(p);
+    public static UserDBCommunicator connectToDatabase(Properties p) {
+        UserDBCommunicator db = new MySQLCommunicator(p);
 
         if(!db.connect()) {
             System.out.println("Error: Unable to connect to database.");
@@ -63,44 +57,47 @@ public class Utils {
         return in;
     }
 
-    public static void emailUser(Simulation simulation, Properties p) {
+    public static void emailUser(Simulation simulation, File messageTemplate, Properties p, String extra) {
         String owner = simulation.getOwner();
         String email = simulation.getOwnerEmail();
         String link = "link";
         StringBuilder message = new StringBuilder();
-
+        System.out.print("Sending email to " + email);
         try {
-            BufferedReader reader = new BufferedReader(new FileReader(new File(p.getProperty("gather_email_template"))));
-
+            BufferedReader reader = new BufferedReader(new FileReader(messageTemplate));
+            System.out.print("* ");
             while (reader.ready()) {
                 message.append(reader.readLine()
                         .replaceAll("\\$user", owner)
                         .replaceAll("\\$link", link)
-                        .replaceAll("\\$job", simulation.getJobName()));
+                        .replaceAll("\\$job", simulation.getJobName())
+                        .replaceAll("\\$sim_num", String.valueOf(simulation.getSimulationNumber()))
+                        .replaceAll("\\$extra", extra));
+                        
                 message.append("\n");
             }
-
-            System.out.println("email: " + email);
+            System.out.print(p.getProperty("email_script"));
             
-            Process shell = new ProcessBuilder("python", p.getProperty("gather_email_script"), email, message.toString()).start();
-        } catch (IOException e) {
+            Process shell = new ProcessBuilder("python", p.getProperty("email_script"), email, message.toString()).start();
+            System.out.println(shell.waitFor());
+        } catch (Exception e) {
+            System.out.print("WTF?? D:");
             e.printStackTrace();
         }
     }
 
-    public static void unlockAll() {
-        Map<String, List<Simulation>> simulationsMap = Hazelcast.getMap(Config.jobsQueue);
-
-        Set<String> keys = simulationsMap.keySet();
-
-        for (String k : keys) {
-            Lock lock = Hazelcast.getLock(k);
-            lock.unlock();
+    public static void emailAdmin(String message, Properties p) {
+        try {
+            Process shell = new ProcessBuilder("python", p.getProperty("email_script"), p.getProperty("admin_mail"), message).start();
+            System.out.println(shell.waitFor());
+        } catch (Exception e){
+            System.out.print("WTF?? D:");
+            e.printStackTrace();
         }
     }
 
-    public static DBCommunicator authenticate(Properties properties, String user) {
-        DBCommunicator database = Utils.connectToDatabase(properties);
+    public static UserDBCommunicator authenticate(Properties properties, String user) {
+        UserDBCommunicator database = Utils.connectToDatabase(properties);
         int guesses = 3;
 
         while (!database.authenticateUser(user)) {
@@ -116,12 +113,22 @@ public class Utils {
         return database;
     }
 
+    public static boolean silentAuthenticate(Properties properties, String user, String password) {
+        UserDBCommunicator database = Utils.connectToDatabase(properties);
+
+        return database.silentAuthenticateUser(user, password);
+    }
+
     public static void sleep(int time) {
         try {
             Thread.sleep(time);
         } catch(InterruptedException e) {
             e.printStackTrace();
         }
+    }
+    
+    public static String getSocketStringFromWorkerID(String id) {
+        return id.substring(0, id.lastIndexOf("-"));
     }
 
     public static String header =

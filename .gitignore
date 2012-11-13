@@ -1,8 +1,10 @@
 target
 pleiades
+!src/main/java/net/pleiades*
 data
 *.txt
 *.log
 *.jar
 *.xml
 *.run
+*~

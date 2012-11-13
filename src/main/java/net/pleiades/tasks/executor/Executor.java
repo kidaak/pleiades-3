@@ -13,7 +13,9 @@ package net.pleiades.tasks.executor;
  * @author bennie
  */
 public interface Executor {
-    boolean executeNextTask();
-    void kill();
+    void requestNewTask();
+    void stop();
+    void start();
+    void toggle();
     String getStateString();
 }

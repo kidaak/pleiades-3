@@ -8,6 +8,9 @@
  */
 package net.pleiades.tasks;
 
+import com.hazelcast.core.Hazelcast;
+import com.hazelcast.core.IMap;
+import com.mongodb.BasicDBObject;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -23,16 +26,18 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
 import java.util.StringTokenizer;
+import net.pleiades.Config;
+import net.pleiades.persistence.PersistentCilibXMLTask;
 import net.pleiades.simulations.Simulation;
 
 /**
  *
  * @author bennie
  */
-public class CilibXMLTask implements Task, Serializable {
+public class CilibXMLTask extends BasicDBObject implements Task, Serializable {
     private String cilibInput;
     private String id;
-    private String results;
+    private String results, error;
     private String progress;
     private Simulation parent;
 
@@ -41,9 +46,19 @@ public class CilibXMLTask implements Task, Serializable {
         this.id = id;
         this.parent = parent;
     }
+    
+    private CilibXMLTask(PersistentCilibXMLTask p) {
+        this.cilibInput = p.cilibInput();
+        this.id = p.id();
+        this.parent = findParent();
+    }
 
     public static CilibXMLTask of(String cilibInput, String id, Simulation parent) {
         return new CilibXMLTask(cilibInput, id, parent);
+    }
+    
+    public static CilibXMLTask of(PersistentCilibXMLTask p) {
+        return new CilibXMLTask(p);
     }
 
     public static CilibXMLTask assignNewIdTo(CilibXMLTask task, String id) {
@@ -51,8 +66,9 @@ public class CilibXMLTask implements Task, Serializable {
     }
 
     @Override
-    public String execute(Properties p) {
+    public boolean execute(Properties p) {
         results = new String();
+        error = new String();
 
         String line;
         InputStream inputStream;
@@ -73,7 +89,7 @@ public class CilibXMLTask implements Task, Serializable {
             reader = new BufferedReader(new InputStreamReader(inputStream));
 
             while ((line = reader.readLine()) != null) {
-                progress = line.replaceAll("Progress ", "");
+                progress = line;
             }
 
             int exitValue = shell.waitFor();
@@ -85,7 +101,7 @@ public class CilibXMLTask implements Task, Serializable {
                 r.delete();
             } else {
                 InputStream eIn = shell.getErrorStream();
-                String error = convertStreamToStr(eIn);
+                error = convertStreamToStr(eIn);
                 FileWriter writer = new FileWriter(new File(id + ".log"));
                 writer.append(error);
                 writer.close();
@@ -96,7 +112,12 @@ public class CilibXMLTask implements Task, Serializable {
         catch (InterruptedException e) {
             e.printStackTrace();
         }
-        return results;
+        
+        if (results.isEmpty()) {
+            return false;
+        }
+               
+        return true;
     }
 
     @Override
@@ -126,6 +147,11 @@ public class CilibXMLTask implements Task, Serializable {
     }
 
     @Override
+    public String getError() {
+        return error;
+    }
+
+    @Override
     public String getProgress() {
         return progress;
     }
@@ -140,6 +166,9 @@ public class CilibXMLTask implements Task, Serializable {
         return id;
     }
 
+    public String getInput() {
+        return cilibInput;
+    }
 
     public static String convertStreamToStr(InputStream is) throws IOException {
         if (is != null) {
@@ -157,7 +186,25 @@ public class CilibXMLTask implements Task, Serializable {
             }
             return writer.toString();
         } else {
-            return "";
+            return "# 0\nNull string received!";
         }
+    }
+
+    private Simulation findParent() {
+        String parentID = id.substring(0, id.lastIndexOf("_"));
+        
+        IMap<String, Simulation> completedMap = Hazelcast.getMap(Config.completedMap);
+        IMap<String, List<Simulation>> simulationsMap = Hazelcast.getMap(Config.simulationsMap);
+        
+        List<Simulation> sims = simulationsMap.get(completedMap.getMapEntry(parentID).getValue().getOwner());
+                
+        Simulation p = null;
+        for (Simulation s : sims) {
+            if (s.getID().equals(parentID)) {
+                p = s;
+            }
+        }
+        
+        return p;
     }
 }

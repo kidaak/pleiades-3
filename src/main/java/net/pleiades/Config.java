@@ -19,11 +19,21 @@ import org.apache.commons.cli.Options;
 
 public class Config {
 
-    public static String jobsQueue = "simulationsMap";
-    public static String runningQueue = "busyMap";
-    public static String completedQueue = "completedMap";
-    public static String fileQueue = "fileQueue";
-    public static final int MaxJobsPerUser = 3;
+    public static String simulationsMap = "simulationsMap";
+    public static String runningMap = "runningMap";
+    public static String completedMap = "completedMap";
+    public static String fileMap = "fileMap";
+    public static String errorQueue = "errorQueue";
+
+    public static String requestTopic = "requestTopic";
+    public static String tasksTopic = "tasksTopic";
+    public static String resultsTopic = "resultsTopic";
+    public static String errorTopic = "errorTopic";
+    public static String continueTopic = "continueTopic";
+    public static String heartBeatTopic = "heartBeatTopic";
+    public static String distributor = "distributor";
+
+    public static final int MaxJobsPerUser = Integer.MAX_VALUE;
 
     public static Options createOptions() {
         Options o = new Options();
@@ -59,6 +69,10 @@ public class Config {
                 .withDescription("Custom Cilib jar file")
                 .withLongOpt("jar")
                 .create("j");
+        
+        Option cont = OptionBuilder.withDescription("Attempts to continue a job that did not complete correctly")
+                .withLongOpt("continue")
+                .create();
 
         Option register = OptionBuilder.withDescription("Register a new user (ignores all other options)")
                 .withLongOpt("register")
@@ -72,6 +86,10 @@ public class Config {
                 .withLongOpt("monitor")
                 .create("m");
 
+        Option verbose = OptionBuilder.withDescription("Hides the Pleiades text output to allow normal output stream to be displayed")
+                .withLongOpt("quiet")
+                .create("q");
+
         o.addOption(help);
         o.addOption(user);
         o.addOption(file);
@@ -81,6 +99,8 @@ public class Config {
         o.addOption(register);
         o.addOption(gatherer);
         o.addOption(monitor);
+        o.addOption(verbose);
+        o.addOption(cont);
 
         return o;
     }
