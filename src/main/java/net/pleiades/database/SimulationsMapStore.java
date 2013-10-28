@@ -136,7 +136,7 @@ public class SimulationsMapStore implements MapStore<String, Simulation> {
     public Set<String> loadAllKeys() {
         Set<String> keys = new LinkedHashSet<String>();
         BasicDBObject query = new BasicDBObject();
-        BasicDBObject sort = new BasicDBObject("id", "1");
+        BasicDBObject sort = new BasicDBObject("id", 1);
         
         DBCursor cursor = jobs.find(query).sort(sort);
         
