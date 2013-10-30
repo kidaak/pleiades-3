@@ -23,7 +23,6 @@ import java.util.concurrent.locks.Lock;
 import net.pleiades.database.RunningMapStore;
 import net.pleiades.database.SimulationsMapStore;
 import net.pleiades.simulations.Simulation;
-import net.pleiades.simulations.selection.RandomSelector;
 import net.pleiades.simulations.selection.SimulationSelector;
 import net.pleiades.simulations.selection.UniformUserSelector;
 import net.pleiades.tasks.Task;
@@ -32,20 +31,18 @@ import net.pleiades.tasks.Task;
  *
  *@author bennie
  */
-public class Distributor implements MessageListener<String>, Runnable {
+public class Distributor implements MessageListener<HashMap<String, SimulationSelector>>, Runnable {
     private final int CHECK_INTERVAL = 12;
     
     private static SimulationsMapStore simulationsMapStore;
     private static RunningMapStore runningMapStore;
 
-    private SimulationSelector simulationSelector;
     private Properties properties;
 
     public Distributor() {
         this.properties = Config.getConfiguration();
         simulationsMapStore = new SimulationsMapStore();
         runningMapStore = new RunningMapStore();
-        this.simulationSelector = new UniformUserSelector();
     }
 
     public void activate() {
@@ -58,11 +55,12 @@ public class Distributor implements MessageListener<String>, Runnable {
     }
 
     @Override
-    public synchronized void onMessage(Message<String> message) {
+    public synchronized void onMessage(Message<HashMap<String, SimulationSelector>> message) {
         System.out.println("Request from: " + message.getMessageObject());
         boolean distributing = false;
         
-        String workerID = message.getMessageObject();
+        String workerID = message.getMessageObject().keySet().toArray(new String[0])[0];
+        SimulationSelector simulationSelector = message.getMessageObject().get(workerID);
         
         if (runningMapStore.loadAll(runningMapStore.loadAllKeys()).containsValue(workerID)) {
             return;
