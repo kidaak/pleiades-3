@@ -8,12 +8,13 @@
  */
 package net.pleiades.simulations.selection;
 
+import java.io.Serializable;
 import net.pleiades.database.SimulationsMapStore;
 
 /**
  *
  * @author bennie
  */
-public interface SimulationSelector {
+public interface SimulationSelector extends Serializable {
     String getKey(SimulationsMapStore simulationsDB);
 }

@@ -11,12 +11,16 @@ package net.pleiades.tasks.executor;
 import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.Message;
 import com.hazelcast.core.MessageListener;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import net.pleiades.Config;
 import net.pleiades.State;
 import static net.pleiades.State.*;
 import net.pleiades.Utils;
+import net.pleiades.simulations.selection.SimulationSelector;
+import net.pleiades.simulations.selection.SingleUserSelector;
+import net.pleiades.simulations.selection.UniformUserSelector;
 import net.pleiades.tasks.Task;
 
 /**
@@ -42,8 +46,17 @@ public class TaskExecutor implements Executor, Runnable, MessageListener<Map<Str
     @Override
     public synchronized void requestNewTask() {
         state(REQUESTING);
+        
+        String user = properties.getProperty("personal_task_executor");
+        HashMap<String, SimulationSelector> request = new HashMap<String, SimulationSelector>();
 
-        Config.REQUESTS_TOPIC.publish(id);
+        if (user.isEmpty()) {
+            request.put(id, new UniformUserSelector());
+        } else {
+            request.put(id, new SingleUserSelector(user));
+        }
+        
+        Config.REQUESTS_TOPIC.publish(request);
 
         state(REQUEST_SENT);
     }

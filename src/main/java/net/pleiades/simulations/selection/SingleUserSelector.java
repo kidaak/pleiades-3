@@ -16,7 +16,12 @@ import net.pleiades.database.SimulationsMapStore;
  *
  * @author bennie
  */
-public class UniformUserSelector implements SimulationSelector {
+public class SingleUserSelector implements SimulationSelector {
+    private String user;
+
+    public SingleUserSelector(String user) {
+        this.user = user;
+    }
 
     @Override
     public String getKey(SimulationsMapStore simulationsDB) {
@@ -27,8 +32,10 @@ public class UniformUserSelector implements SimulationSelector {
         LinkedHashMultimap<String, String> userMap = LinkedHashMultimap.create();
         
         for (String key : keySet) {
-            String user = key.substring(0, key.indexOf("_"));
-            userMap.put(user, key);
+            String u = key.substring(0, key.indexOf("_"));
+            if (u.equalsIgnoreCase(user)) {
+                userMap.put(u, key);
+            }
         }
        
         String[] users = userMap.keySet().toArray(new String[0]);
