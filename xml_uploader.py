@@ -1,5 +1,6 @@
 from lxml import etree
 from pymongo import Connection
+from common import *
 
 class XML_Uploader:
     def upload_xml(self, file, job, user):
@@ -59,7 +60,7 @@ class XML_Uploader:
         return jobs
 
     def upload_xml_strings(self, id_list, xml_list, type, job, user):
-        db = get_database()[0]
+        db, con = get_database()
         
         i = 0
         for e in xml_list:
@@ -71,9 +72,10 @@ class XML_Uploader:
                 'value': e
             })
             i += 1
+        con.close()
 
     def upload_simulations(self, sims, job, user):
-        db = get_database()[0]
+        db, con = get_database()[0]
 
         i = 0
         for e in sims:
@@ -88,14 +90,10 @@ class XML_Uploader:
                 'value': etree.tostring(e)
             })
             i += 1
+        con.close()
 
-def get_database():
-    connection = Connection('137.215.137.225', 27017)
-    database = connection.test_pleiades
-    database.authenticate('admin', '12345')
-    return database, connection
-
-p = XML_Uploader()
-f = 'gbestPSO.xml'
-jobs = p.upload_xml(f, '0', 'bennie')
-print jobs
+if __name__ == '__main__':
+    p = XML_Uploader()
+    f = 'gbestPSO.xml'
+    jobs = p.upload_xml(f, '0', 'bennie')
+    print jobs
