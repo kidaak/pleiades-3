@@ -17,6 +17,7 @@ class Uploader(Actor):
 
     def handle_AckResultMessage(self, msg):
         print 'Received ACK'
+        #TODO: get status from message
         self.running = False
         return True
 

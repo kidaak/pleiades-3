@@ -4,7 +4,6 @@ from common import *
 import time
 import os
 from subprocess import *
-from multiprocessing import Process
 
 class Worker(Actor):
     subscriptions = ['JobMessage', 'NoJobMessage', 'AckResultMessage']
