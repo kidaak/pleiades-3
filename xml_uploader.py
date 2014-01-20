@@ -44,28 +44,27 @@ class XML_Uploader:
         print samples
 
         #upload to db
-        _id = uuid.uuid4()
-        self.upload_xml_strings(alg_idrefs, algorithms, 'alg', job, user, _id)
-        self.upload_xml_strings(prob_idrefs, problems, 'prob', job, user, _id)
-        self.upload_xml_strings(meas_idrefs, measurements, 'measure', job, user, _id)
-        self.upload_simulations(sims, 'sim', job, user, _id)
+        self.upload_xml_strings(alg_idrefs, algorithms, 'alg', job, user)
+        self.upload_xml_strings(prob_idrefs, problems, 'prob', job, user)
+        self.upload_xml_strings(meas_idrefs, measurements, 'measure', job, user)
+        self.upload_simulations(sims, job, user)
 
         #construct jobs
         jobs = {}
-        i = job
+        i = 0
         for s in samples:
             jobs[i] = int(samples[i])
             i += 1
 
         return jobs
 
-    def upload_xml_strings(self, id_list, xml_list, type, job, user, _id):
+    def upload_xml_strings(self, id_list, xml_list, type, job, user):
         db = get_database()[0]
         
         i = 0
         for e in xml_list:
             db.xml.insert({
-                'id': _id,
+                'job_id': job,
                 'type': type,
                 'user_id': user,
                 'idref': id_list[i],
@@ -73,16 +72,16 @@ class XML_Uploader:
             })
             i += 1
 
-    def upload_simulations(self, sims, type, job, user, _id):
+    def upload_simulations(self, sims, job, user):
         db = get_database()[0]
 
         i = 0
         for e in sims:
             db.xml.insert({
-                'id': _id,
-                'type': type,
+                'job_id': job,
+                'sim_id': i,
+                'type': 'sim',
                 'user_id': user,
-                'job_id': job + i,
                 'alg': e.find('./algorithm').get('idref'),
                 'prob': e.find('./problem').get('idref'),
                 'meas': e.find('./measurements').get('idref'),

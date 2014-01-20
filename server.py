@@ -84,8 +84,19 @@ class Server(Actor):
         job = msg.get_property('msg')
 
         user = job['user']
-        xml = cStringIO.StringIO(job['xml'])
-        first_job_id = max([j['id'] for j in self.db.jobs.find({'owner': user})] + [0]) + 1
+        job_id = max([j['id'] for j in self.db.jobs.find({'user_id': user})] + [0]) + 1
+
+        # Upload XML
+        p = XML_Uploader()
+        jobs = p.upload_xml(cStringIO.StringIO(job['xml']), job_id, user)
+
+        # Upload jobs
+        self.db.jobs.insert([{
+            'samples': jobs[j],
+            'job_id': job_id,
+            'user_id': user,
+            'sim_id': j
+        } for j in jobs.keys()])
 
         # Transfer jar
         try:
@@ -100,16 +111,9 @@ class Server(Actor):
 
             sock.close()
 
-            put_file(cStringIO.StringIO(jar_file), 'filinep_1')
+            put_file(cStringIO.StringIO(jar_file), user)
         except Exception, e:
             print "New job error: ", e
-
-        # Upload XML
-        p = XML_Uploader()
-        jobs = p.upload_xml(cStringIO.StringIO(xml), job_id, user)
-
-        for j in jobs:
-            
 
         self.mgr.send_message(AckResultMessage(msg=0), msg.sender)
 
