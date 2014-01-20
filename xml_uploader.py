@@ -44,50 +44,52 @@ class XML_Uploader:
         print samples
 
         #upload to db
-        self.upload_xml_strings(alg_idrefs, algorithms, 'alg', job, user)
-        self.upload_xml_strings(prob_idrefs, problems, 'prob', job, user)
-        self.upload_xml_strings(meas_idrefs, measurements, 'measure', job, user)
-        self.upload_simulations(sims, 'sim', job, user)
+        _id = uuid.uuid4()
+        self.upload_xml_strings(alg_idrefs, algorithms, 'alg', job, user, _id)
+        self.upload_xml_strings(prob_idrefs, problems, 'prob', job, user, _id)
+        self.upload_xml_strings(meas_idrefs, measurements, 'measure', job, user, _id)
+        self.upload_simulations(sims, 'sim', job, user, _id)
 
         #construct jobs
         jobs = {}
-        i = 0
+        i = job
         for s in samples:
             jobs[i] = int(samples[i])
             i += 1
 
         return jobs
 
-    def upload_xml_strings(self, id_list, xml_list, type, job, user):
+    def upload_xml_strings(self, id_list, xml_list, type, job, user, _id):
         db = get_database()[0]
         
         i = 0
         for e in xml_list:
             db.xml.insert({
+                'id': _id,
                 'type': type,
                 'user_id': user,
-                'job_id': job,
                 'idref': id_list[i],
                 'value': e
             })
             i += 1
 
-    def upload_simulations(self, sims, type, job, user):
+    def upload_simulations(self, sims, type, job, user, _id):
         db = get_database()[0]
 
         i = 0
         for e in sims:
             db.xml.insert({
+                'id': _id,
                 'type': type,
                 'user_id': user,
-                'job_id': str(job),
+                'job_id': job + i,
                 'alg': e.find('./algorithm').get('idref'),
                 'prob': e.find('./problem').get('idref'),
                 'meas': e.find('./measurements').get('idref'),
                 'value': etree.tostring(e)
             })
             i += 1
-        
+
 def get_database():
     connection = Connection('137.215.137.225', 27017)
     database = connection.test_pleiades

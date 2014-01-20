@@ -4,6 +4,10 @@ import gridfs
 import json
 import bson
 
+
+PORT=8000
+HOST='localhost'
+
 def get_database():
     connection = MongoClient('137.215.137.225', 27017)
     database = connection.test_pleiades
@@ -22,7 +26,8 @@ def get_file(name):
 def put_file(fname, fid):
     db, con = get_database()
     grid = gridfs.GridFS(db)
-    r = grid.put(open(fname, 'rb'), id=fid)
+    #r = grid.put(open(fname, 'rb'), id=fid)
+    r = grid.put(fname, id=fid)
     con.close()
     return r
 
@@ -79,3 +84,4 @@ class NewJobMessage(Message):
         return json.dumps(msg)
     def unpack_msg(self, msg_s):
         return json.loads(msg_s)
+

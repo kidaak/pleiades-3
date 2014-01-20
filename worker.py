@@ -12,7 +12,7 @@ class Worker(Actor):
     def __init__(self):
         self.mgr = ActorManager.get_singleton()
         self.mgr.register_actor(self)
-        self.mgr.connect(transport.SelectTCPTransport, host='localhost', port=8001)
+        self.mgr.connect(transport.SelectTCPTransport, host=HOST, port=PORT)
         self.mgr.broadcast_message(JobRequestMessage(a=0))
 
         self.status = ''
