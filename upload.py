@@ -34,14 +34,14 @@ class Uploader(Actor):
             with open(xmlfile, 'r') as xml:
                 x = xml.read().encode('zlib').encode('base64')
         except:
-            print "Error reading XML file"
+            print 'Error reading XML file'
             sys.exit(1)
 
         try:
             with open(options.jarfile, 'rb') as jar:
                 j = jar.read().encode('zlib').encode('base64')
         except:
-            print "Error reading JAR file"
+            print 'Error reading JAR file'
             sys.exit(1)
 
         print 'Setting up file transfer...'
@@ -51,7 +51,7 @@ class Uploader(Actor):
 
         print 'Sending files...'
         self.mgr.broadcast_message(NewJobMessage(msg={
-            'user':self.args.user,
+            'user_id':self.args.user,
             'type':self.args.type,
             'socket':sock.getsockname(),
             'm_size':len(j),
@@ -69,20 +69,23 @@ class Uploader(Actor):
 
         print 'Wating for reply...'
         while self.running:
-            self.mgr.tick()
+            try:
+                self.mgr.tick()
+            except KeyboardInterrupt, SystemExit:
+                self.running = False
 
         print 'Completing...'
 
 if __name__ == '__main__':
     parser = OptionParser()
-    parser.add_option("-j", "--jar", dest="jarfile",
-                      help="cilib jar file to use", metavar="JAR")
-    parser.add_option("-i", "--xml", dest="xmlfile",
-                      help="xml input file to use", metavar="XML")
-    parser.add_option("-u", "--user", dest="user",
-                      help="username", metavar="USER")
-    parser.add_option("-t", "--type", dest="type",
-                      help="type of jar file: custom, master, official", metavar="TYPE")
+    parser.add_option('-j', '--jar', dest='jarfile',
+                      help='cilib jar file to use', metavar='JAR')
+    parser.add_option('-i', '--xml', dest='xmlfile',
+                      help='xml input file to use', metavar='XML')
+    parser.add_option('-u', '--user', dest='user',
+                      help='username', metavar='USER')
+    parser.add_option('-t', '--type', dest='type',
+                      help='type of jar file: custom, master, official', metavar='TYPE')
 
     (options, args) = parser.parse_args()
 
@@ -91,6 +94,5 @@ if __name__ == '__main__':
         parser.print_help()
         sys.exit(1)
 
-    u = Uploader(options)
-    u.upload()
+    Uploader(options).upload()
 

@@ -1,11 +1,16 @@
 from pymongo import *
 from settings import *
 import gridfs
+import sys
 
 def mongo_connect(user, pwd):
     connection = Connection(MONGO_IP, MONGO_PORT)
     database = connection[MONGO_DB]
-    database.authenticate(user, pwd)
+    try:
+        database.authenticate(user, pwd)
+    except:
+        print 'Authentication failed. Exiting.'
+        sys.exit(1)
     return database, connection
 
 def get_file(job_id, user_id):

@@ -1,5 +1,5 @@
 #!/bin/env python2
-import os
+import os, sys
 from pysage import *
 from socket import *
 from cStringIO import *
@@ -21,16 +21,20 @@ class Server(Actor):
 
         self.running = True
 
-        print "Server started..."
+        print 'Starting server...'
 
 
     def handle_JobRequestMessage(self, msg):
-        print "Request from:", msg.sender
+        print 'Request from:', msg.sender
 
         try:
-            print "Getting job"
+            print 'Getting job'
+            allowed_users = msg.get_property('msg')['allowed_users']
 
-            job = self.db.jobs.find_one({'samples': {'$gt':0}})
+            if not allowed_users:
+                job = self.db.jobs.find_one({'samples': {'$gt':0}})
+            else:
+                job = self.db.jobs.find_one({'samples': {'$gt':0}, 'user_id':{'$all':allowed_users}})
 
             if not job:
                 # No job was found
@@ -42,20 +46,20 @@ class Server(Actor):
             job['samples'] -= 1
             self.db.jobs.save(job)
 
-            print "Constructing job message"
+            print 'Constructing job message'
 
             job = self.db.xml.find_one({'job_id':job['job_id'], 'type':'sim', 'user_id':job['user_id']})
             job['sample'] = sample
             del(job['_id'])
 
-            print "Sending job"
+            print 'Sending job'
 
             self.mgr.send_message(JobMessage(msg=job), msg.sender)
 
             print 'Job sent'
             print
         except Exception, e:
-            print "Job request error: ", e
+            print 'Job request error: ', e
             print 'Stack trace:'
             print_exc(file=sys.stdout)
             print
@@ -106,7 +110,7 @@ class Server(Actor):
             print 'New job received'
             job = msg.get_property('msg')
 
-            user = job['user']
+            user = job['user_id']
             job_id = max([j['job_id'] for j in self.db.jobs.find({'user_id': user})] + [0]) + 1
 
             # Upload XML
@@ -141,7 +145,7 @@ class Server(Actor):
             #TODO: Send status with message
             self.mgr.send_message(AckResultMessage(msg=0), msg.sender)
         except Exception, e:
-            print "New job error: ", e
+            print 'New job error: ', e
             print 'Stack trace:'
             print_exc(file=sys.stdout)
             print
@@ -152,9 +156,13 @@ class Server(Actor):
         return True
 
     def run(self):
+        print 'Ready to receive/distribute...'
         while self.running:
-            self.mgr.tick()
+            try:
+                self.mgr.tick()
+            except KeyboardInterrupt, SystemExit:
+                self.running = False
 
-s = Server()
-s.run()
+if __name__ == '__main__':
+    Server().run()
 
