@@ -1,44 +1,68 @@
 #!/bin/env python2
-import socket, os
+import os, sys
 from pysage import *
-from common import *
-from cStringIO import StringIO
-from xml_uploader import XML_Uploader
+from socket import *
+from cStringIO import *
+from xml_uploader import *
+from settings import *
+from messages import *
+from database import *
+from traceback import *
 
 class Server(Actor):
-    subscriptions = ['JobRequestMessage', 'ResultMessage', 'NewJobMessage']
+    subscriptions = ['JobRequestMessage', 'ResultMessage', 'NewJobMessage', 'KillMessage']
 
     def __init__(self):
-        self.db, self.connection = get_database()
+        self.db, self.connection = mongo_connect(MONGO_RW_USER, MONGO_RW_PWD)
 
         self.mgr = ActorManager.get_singleton()
-        self.mgr.listen(transport.SelectTCPTransport, host=HOST, port=PORT)
+        self.mgr.listen(transport.SelectTCPTransport, host=SERVER_IP, port=SERVER_PORT)
         self.mgr.register_actor(self)
 
-        print("Server started...")
+        self.running = True
+
+        print 'Starting server...'
+
 
     def handle_JobRequestMessage(self, msg):
-        print ("Request from: " + str(msg.sender))
-        
+        print 'Request from:', msg.sender
+
         try:
-            job = self.db.jobs.find_one({'samples': {'$gt':0}})
+            print 'Getting job'
+            allowed_users = msg.get_property('msg')['allowed_users']
+
+            if not allowed_users:
+                job = self.db.jobs.find_one({'samples': {'$gt':0}})
+            else:
+                job = self.db.jobs.find_one({'samples': {'$gt':0}, 'user_id':{'$all':allowed_users}})
+
+            if not job:
+                # No job was found
+                print 'No jobs to run'
+                self.mgr.send_message(NoJobMessage(msg=0), msg.sender)
+                return True
+
             sample = job['samples']
             job['samples'] -= 1
-
             self.db.jobs.save(job)
 
-            job_id = job['job_id']
-            sim_id = job['sim_id']
-            user_id = job['user_id']
-            job = self.db.xml.find_one({'type':'sim', 'job_id':job_id, 'sim_id':sim_id, 'user_id':user_id})
+            print 'Constructing job message'
+
+            job = self.db.xml.find_one({'job_id':job['job_id'], 'type':'sim', 'user_id':job['user_id']})
             job['sample'] = sample
             del(job['_id'])
 
+            print 'Sending job'
+
             self.mgr.send_message(JobMessage(msg=job), msg.sender)
 
+            print 'Job sent'
+            print
         except Exception, e:
-            print e
-            self.mgr.send_message(NoJobMessage(msg=0), msg.sender)
+            print 'Job request error: ', e
+            print 'Stack trace:'
+            print_exc(file=sys.stdout)
+            print
 
         return True
 
@@ -82,10 +106,11 @@ class Server(Actor):
         return True
 
     def handle_NewJobMessage(self, msg):
-        job = msg.get_property('msg')
-
         try:
-            user = job['user']
+            print 'New job received'
+            job = msg.get_property('msg')
+
+            user = job['user_id']
             job_id = max([j['job_id'] for j in self.db.jobs.find({'user_id': user})] + [0]) + 1
 
             # Upload XML
@@ -104,7 +129,7 @@ class Server(Actor):
             } for j in jobs])
 
             # Transfer jar
-            sock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+            sock = socket(AF_INET, SOCK_STREAM)
             sock.connect(tuple(job['socket']))
 
             jar_file = ''
@@ -116,18 +141,28 @@ class Server(Actor):
             sock.close()
 
             put_file(StringIO(jar_file.decode('base64').decode('zlib')), user, job_id)
-        except Exception, e:
+
             #TODO: Send status with message
-            print e
-        
-        self.mgr.send_message(AckResultMessage(msg=0), msg.sender)
+            self.mgr.send_message(AckResultMessage(msg=0), msg.sender)
+        except Exception, e:
+            print 'New job error: ', e
+            print 'Stack trace:'
+            print_exc(file=sys.stdout)
+            print
+
+            #TODO: Send status with message
+            self.mgr.send_message(AckResultMessage(msg=0), msg.sender)
 
         return True
 
     def run(self):
-        while True:
-            self.mgr.tick()
+        print 'Ready to receive/distribute...'
+        while self.running:
+            try:
+                self.mgr.tick()
+            except KeyboardInterrupt, SystemExit:
+                self.running = False
 
-s = Server()
-s.run()
+if __name__ == '__main__':
+    Server().run()
 
