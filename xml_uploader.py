@@ -47,7 +47,7 @@ class XML_Uploader:
         #upload to db
         self.upload_xml_strings(alg_idrefs, algorithms, 'alg', job, user)
         self.upload_xml_strings(prob_idrefs, problems, 'prob', job, user)
-        self.upload_xml_strings(meas_idrefs, measurements, 'measure', job, user)
+        self.upload_xml_strings(meas_idrefs, measurements, 'meas', job, user)
         self.upload_simulations(sims, job, user)
 
         #construct jobs
@@ -75,7 +75,7 @@ class XML_Uploader:
         con.close()
 
     def upload_simulations(self, sims, job, user):
-        db, con = get_database()[0]
+        db, con = get_database()
 
         i = 0
         for e in sims:
@@ -97,3 +97,10 @@ if __name__ == '__main__':
     f = 'gbestPSO.xml'
     jobs = p.upload_xml(f, '0', 'bennie')
     print jobs
+
+'''
+p = XML_Uploader()
+f = 'gbestPSO.xml'
+jobs = p.upload_xml(f, '0', 'bennie')
+print jobs
+'''

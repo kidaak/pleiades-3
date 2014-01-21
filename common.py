@@ -1,33 +1,33 @@
 from pysage import Message
-from pymongo import MongoClient
+from pymongo import Connection
 import gridfs
 import json
 import bson
 
 
-PORT=8000
-HOST='localhost'
+PORT=8001
+HOST='HOST'
 
 def get_database():
-    connection = MongoClient('137.215.137.225', 27017)
+    connection = Connection('137.215.137.225', 27017)
     database = connection.test_pleiades
     database.authenticate('admin', '12345')
     return database, connection
 
-def get_file(name):
+def get_file(job, user):
     #TODO: make this use a read-only user
     db, con = get_database()
     grid = gridfs.GridFS(db)
-    _id = db.fs.files.find_one({'id':name})['_id']
+    _id = db.fs.files.find_one({'job_id':job, 'user_id':user})['_id']
     r = grid.get(_id).read()
     con.close()
     return r
 
-def put_file(fname, fid):
+def put_file(fname, user, job):
     db, con = get_database()
     grid = gridfs.GridFS(db)
     #r = grid.put(open(fname, 'rb'), id=fid)
-    r = grid.put(fname, id=fid)
+    r = grid.put(fname, user_id=user, job_id=job)
     con.close()
     return r
 
