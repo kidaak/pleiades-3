@@ -33,16 +33,16 @@ class XML_Uploader:
 
         #find all <simulation samples=""/> elements
         #record samples and replace with 1
-        #replace output filename with '_output_' placeholder
+        #record output filename and replace with '_output_' placeholder
         #simulations = []
         samples = []
+        filenames = []
         sims = tree.findall('.//simulation[@samples]')
         [samples.append(e.get('samples')) for e in sims]
         [e.set('samples', '1') for e in sims]
+        [filenames.append(e.find('./output').get('file')) for e in sims]
         [e.find('./output').set('file', '_output_') for e in sims]
         #[simulations.append(etree.tostring(e)) for e in sims]
-
-        print samples
 
         #upload to db
         self.upload_xml_strings(alg_idrefs, algorithms, 'alg', job, user)
@@ -51,10 +51,10 @@ class XML_Uploader:
         self.upload_simulations(sims, job, user)
 
         #construct jobs
-        jobs = {}
+        jobs = []
         i = 0
         for s in samples:
-            jobs[i] = int(samples[i])
+            jobs.append((i, int(samples[i]), filenames[i]))
             i += 1
 
         return jobs

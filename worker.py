@@ -28,9 +28,8 @@ class Worker(Actor):
         sim_id = sim['sim_id']
         job_id = sim['job_id']
 
-        # execute
-        
-        #TODO: construct xml from db here
+        self.status = 'getting xml'
+
         meas_id = sim['meas']
         prob_id = sim['prob']
         
@@ -41,7 +40,7 @@ class Worker(Actor):
         algs_xml = list(self.db.xml.find({'type':'alg', 'job_id':job_id, 'user_id':user_id}))
         sim_xml = self.db.xml.find_one({'type':'sim', 'job_id':job_id, 'sim_id':sim_id, 'user_id':user_id})
 
-        #print sim_xml['value']
+        self.status = 'writing files'
 
         output_file_name = str(uuid.uuid4())
         with open(xml_name, 'w') as xml_file:
@@ -67,6 +66,8 @@ class Worker(Actor):
             jar = get_file(job_id, user_id)
             jar_file.write(jar)
 
+        self.status = 'executing'
+
         process = Popen(['java', '-jar', jar_name, xml_name], stdout=PIPE)
         while process.poll() == None:
             self.status = process.stdout.read(256)
@@ -75,9 +76,11 @@ class Worker(Actor):
         os.remove(xml_name)
         os.remove(jar_name)
 
+        self.status = 'posting results'
+
         # send back result
         with open(output_file_name, 'r') as result_file:
-            self.mgr.broadcast_message(ResultMessage(msg={'id': sim['sim_id'], 'result':result_file.read()}))
+            self.mgr.broadcast_message(ResultMessage(msg={'job_id': sim['job_id'], 'sim_id':sim['sim_id'], 'user_id':sim['user_id'], 'result':result_file.read(), 'sample':sim['sample']}))
 
         os.remove(output_file_name)
 
