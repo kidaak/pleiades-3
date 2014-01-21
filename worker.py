@@ -72,13 +72,14 @@ class Worker(Actor):
             self.status = process.stdout.read(256)
             print self.status,
 
-        #os.remove(xml_name)
+        os.remove(xml_name)
         os.remove(jar_name)
 
         # send back result
-
         with open(output_file_name, 'r') as result_file:
             self.mgr.broadcast_message(ResultMessage(msg={'id': sim['sim_id'], 'result':result_file.read()}))
+
+        os.remove(output_file_name)
 
         return True
 
