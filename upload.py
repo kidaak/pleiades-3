@@ -26,8 +26,11 @@ class Uploader(Actor):
             print 'Jar type must be "custom", "master" or "official"'
             sys.exit(1)
 
+        xmlfile = options.xmlfile
+        name = xmlfile[:xmlfile.rindex('.')]
+
         try:
-            with open(options.xmlfile, 'r') as xml:
+            with open(xmlfile, 'r') as xml:
                 x = xml.read().encode('zlib').encode('base64')
         except:
             print "Error reading XML file"
@@ -51,7 +54,8 @@ class Uploader(Actor):
             'type':self.args.type,
             'socket':sock.getsockname(),
             'm_size':len(j),
-            'xml':x
+            'xml':x,
+            'name':name
         }))
 
         try:

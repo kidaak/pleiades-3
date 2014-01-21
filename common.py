@@ -8,6 +8,8 @@ import bson
 PORT=8001
 HOST='HOST'
 
+RESULTS_DIR='Results'
+
 def get_database():
     connection = Connection('137.215.137.225', 27017)
     database = connection.test_pleiades
