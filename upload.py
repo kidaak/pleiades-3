@@ -1,6 +1,7 @@
 #!/bin/env python2
 from pysage import *
-from common import *
+from settings import *
+from messages import *
 from optparse import OptionParser
 import sys
 import socket
@@ -11,7 +12,7 @@ class Uploader(Actor):
     def __init__(self, args):
         self.mgr = ActorManager.get_singleton()
         self.mgr.register_actor(self)
-        self.mgr.connect(transport.SelectTCPTransport, host=HOST, port=PORT)
+        self.mgr.connect(transport.SelectTCPTransport, host=SERVER_IP, port=SERVER_PORT)
         self.running = True
         self.args = args
 
