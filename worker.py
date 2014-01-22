@@ -46,6 +46,7 @@ class Worker(Actor):
 
             user_id = sim['user_id']
             sim_id = sim['sim_id']
+            print "executing: " + str(sim_id)
             job_id = sim['job_id']
             base_name = '%s_%s_%s_%s' % (user_id, str(job_id), str(sim_id), str(sim['sample']))
 

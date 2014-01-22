@@ -8,6 +8,7 @@ from settings import *
 from messages import *
 from database import *
 from traceback import *
+from gatherer import *
 
 class Server(Actor):
     subscriptions = ['JobRequestMessage', 'ResultMessage', 'NewJobMessage', 'KillMessage']
@@ -46,9 +47,9 @@ class Server(Actor):
             job['samples'] -= 1
             self.db.jobs.save(job)
 
-            print 'Constructing job message'
+            print 'Constructing job message (' + str(job['sim_id']) + ')'
 
-            job = self.db.xml.find_one({'job_id':job['job_id'], 'type':'sim', 'user_id':job['user_id']})
+            job = self.db.xml.find_one({'job_id':job['job_id'], 'sim_id':job['sim_id'], 'type':'sim', 'user_id':job['user_id']})
             job['sample'] = sample
             del(job['_id'])
 
@@ -76,8 +77,10 @@ class Server(Actor):
         sim_id = result['sim_id']
         sample = result['sample']
 
-        job = self.db.jobs.find_one({'job_id':job_id, 'sim_id':sim_id, 'user_id':user_id})
-        job_name = job['job_name']
+        sim = self.db.jobs.find_one({'job_id':job_id, 'sim_id':sim_id, 'user_id':user_id})
+        job_name = sim['job_name']
+
+        print "received result for: " + str(sim_id)
 
         #TODO: append output directory here
         output_dir = os.path.join(RESULTS_DIR, str(user_id), str(job_name), str(sim_id))
@@ -87,21 +90,22 @@ class Server(Actor):
             info = os.path.join(output_dir, '.info')
             os.makedirs(output_dir)
             with open(info, 'w+') as info_file:
-                info_file.write('user_id: ' + str(job['user_id']) + '\n')
-                info_file.write('job_name: ' + str(job['job_name']) + '\n')
-                info_file.write('file_name: ' + str(job['file_name']) + '\n')
-                info_file.write('job_id: ' + str(job['job_id']) + '\n')
-                info_file.write('sim_id: ' + str(job['sim_id']) + '\n')
+                info_file.write('user_id: ' + str(sim['user_id']) + '\n')
+                info_file.write('job_name: ' + str(sim['job_name']) + '\n')
+                info_file.write('file_name: ' + str(sim['file_name']) + '\n')
+                info_file.write('samples: ' + str(sim['total_samples']) + '\n')
+                info_file.write('job_id: ' + str(sim['job_id']) + '\n')
+                info_file.write('sim_id: ' + str(sim['sim_id']) + '\n')
 
         with open(file_name, 'w+') as result_file:
             result_file.write(result['result'])
 
-        job['results'].append(file_name)
-        self.db.jobs.save(job)
+        sim['results'].append(file_name)
+        self.db.jobs.save(sim)
 
-        if job['samples'] == 0:
-            #TODO: gather results here
-            print 'Gathering results'
+        if sim['total_samples'] == len(sim['results']):
+            print "Gathering " + sim['file_name']
+            Gatherer.gather_results(sim)
 
         return True
 
@@ -123,6 +127,7 @@ class Server(Actor):
                 'job_name': job['name'],
                 'file_name': j[2],
                 'samples': j[1],
+                'total_samples': j[1],
                 'job_id': job_id,
                 'sim_id': j[0],
                 'results': []
