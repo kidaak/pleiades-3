@@ -111,7 +111,7 @@ class Worker(Actor):
                         'job_id': sim['job_id'],
                         'sim_id': sim['sim_id'],
                         'user_id':sim['user_id'],
-                        'result':result_file.read(),
+                        'result':result_file.read().encode('zlib').encode('base64'),
                         'sample':sim['sample']
                     }))
 
@@ -120,9 +120,7 @@ class Worker(Actor):
                 self.mgr.broadcast_message(JobErrorMessage(msg={
                     'job_id': sim['job_id'],
                     'sim_id': sim['sim_id'],
-                    'user_id':sim['user_id'],
-                    'result':result_file.read().encode('zlib').encode('base64'),
-                    'sample':sim['sample']
+                    'user_id':sim['user_id']
                 }))
 
             os.remove(xml_name)
