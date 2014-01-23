@@ -2,9 +2,9 @@
 from pysage import *
 from settings import *
 from messages import *
+from socket import *
 from optparse import OptionParser
-import sys
-import socket
+import sys, os
 
 class Uploader(Actor):
     subscriptions = ['AckResultMessage']
@@ -28,7 +28,7 @@ class Uploader(Actor):
             sys.exit(1)
 
         xmlfile = options.xmlfile
-        name = xmlfile[:xmlfile.rindex('.')]
+        name = xmlfile[xmlfile.rfind(os.path.sep) + 1:xmlfile.rindex('.')]
 
         try:
             with open(xmlfile, 'r') as xml:
@@ -45,8 +45,9 @@ class Uploader(Actor):
             sys.exit(1)
 
         print 'Setting up file transfer...'
-        sock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-        sock.bind(('', 0))
+        sock = socket(AF_INET, SOCK_STREAM)
+        local_ip = [ip for ip in gethostbyname_ex(gethostname())[2] if not ip == '127.0.0.1'][:1][0]
+        sock.bind((local_ip, 0))
         sock.listen(1)
 
         print 'Sending files...'
@@ -59,6 +60,7 @@ class Uploader(Actor):
             'name':name
         }))
 
+        print sock.getsockname()
         try:
             s,a = sock.accept()
             s.sendall(j)
@@ -95,4 +97,3 @@ if __name__ == '__main__':
         sys.exit(1)
 
     Uploader(options).upload()
-
