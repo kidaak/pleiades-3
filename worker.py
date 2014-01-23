@@ -105,8 +105,19 @@ class Worker(Actor):
             self.status = 'posting results'
 
             # send back result
-            with open(output_file_name, 'r') as result_file:
-                self.mgr.broadcast_message(ResultMessage(msg={
+            if not process.returncode:
+                with open(output_file_name, 'r') as result_file:
+                    self.mgr.broadcast_message(ResultMessage(msg={
+                        'job_id': sim['job_id'],
+                        'sim_id': sim['sim_id'],
+                        'user_id':sim['user_id'],
+                        'result':result_file.read(),
+                        'sample':sim['sample']
+                    }))
+
+                os.remove(output_file_name)
+            else:
+                self.mgr.broadcast_message(JobErrorMessage(msg={
                     'job_id': sim['job_id'],
                     'sim_id': sim['sim_id'],
                     'user_id':sim['user_id'],
@@ -116,7 +127,6 @@ class Worker(Actor):
 
             os.remove(xml_name)
             os.remove(jar_name)
-            os.remove(output_file_name)
         except Exception, e:
             print 'Worker error: ', e
             print 'Stack trace:'

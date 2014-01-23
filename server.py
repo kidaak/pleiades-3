@@ -11,7 +11,7 @@ from traceback import *
 from gatherer import *
 
 class Server(Actor):
-    subscriptions = ['JobRequestMessage', 'ResultMessage', 'NewJobMessage', 'KillMessage']
+    subscriptions = ['JobRequestMessage', 'ResultMessage', 'NewJobMessage', 'KillMessage', 'JobErrorMessage']
 
     def __init__(self):
         self.db, self.connection = mongo_connect(MONGO_RW_USER, MONGO_RW_PWD)
@@ -108,6 +108,7 @@ class Server(Actor):
 
         if sim['total_samples'] == len(sim['results']):
             print "Gathering " + sim['file_name']
+
             g = Gatherer()
             g.gather_results(sim)
 
@@ -133,8 +134,7 @@ class Server(Actor):
             job_id = max([j['job_id'] for j in self.db.jobs.find({'user_id': user})] + [0]) + 1
 
             # Upload XML
-            p = XML_Uploader()
-            jobs = p.upload_xml(StringIO(job['xml'].decode('base64').decode('zlib')), job_id, user)
+            jobs = XML_Uploader().upload_xml(StringIO(job['xml'].decode('base64').decode('zlib')), job_id, user)
 
             # Upload jobs
             self.db.jobs.insert([{
@@ -174,6 +174,29 @@ class Server(Actor):
             self.mgr.send_message(AckResultMessage(msg=0), msg.sender)
 
         return True
+
+
+    def handle_JobErrorMessage(self, msg):
+        try:
+            print 'Received job error'
+
+            job = msg.get_property('msg')
+            sim = self.db.jobs.find_one({'user_id':job['user_id'], 'sim_id': job['sim_id'], 'job_id': job['job_id']})
+            self.db.jobs.remove(sim)
+
+            print 'Removed job: user', job['user_id'], 'job', job['job_id'], 'sim', job['sim_id']
+            #TODO: email user
+
+            #TODO: Send status with message
+            self.mgr.send_message(AckResultMessage(msg=0), msg.sender)
+        except Exception, e:
+            print 'Job error error: ', e
+            print 'Stack trace:'
+            print_exc(file=sys.stdout)
+            print
+
+        return True
+
 
     def run(self):
         print 'Ready to receive/distribute...'
