@@ -1,5 +1,5 @@
 #!/bin/env python2
-import os, sys
+import os, sys, shutil
 from pysage import *
 from socket import *
 from cStringIO import *
@@ -82,8 +82,7 @@ class Server(Actor):
 
         print "received result for: " + str(sim_id)
 
-        #TODO: append output directory here
-        output_dir = os.path.join(RESULTS_DIR, str(user_id), str(job_name), str(sim_id))
+        output_dir = os.path.join(RESULTS_DIR, str(user_id), str(job_name), str(job_id), str(sim_id))
         file_name = os.path.join(output_dir, str(sample) + '.txt')
 
         if not os.path.exists(output_dir):
@@ -97,15 +96,32 @@ class Server(Actor):
                 info_file.write('job_id: ' + str(sim['job_id']) + '\n')
                 info_file.write('sim_id: ' + str(sim['sim_id']) + '\n')
 
+        print os.path.exists(file_name), ":", file_name
+
         with open(file_name, 'w+') as result_file:
-            result_file.write(result['result'])
+            result_file.write(result['result'].decode('base64').decode('zlib'))
+
+        print os.path.exists(file_name), ":", file_name
 
         sim['results'].append(file_name)
         self.db.jobs.save(sim)
 
         if sim['total_samples'] == len(sim['results']):
             print "Gathering " + sim['file_name']
-            Gatherer().gather_results(sim)
+
+            g = Gatherer()
+            g.gather_results(sim)
+
+            #delete temp files
+            shutil.rmtree(output_dir)
+
+            #remove database entries
+            self.db.jobs.remove(sim)
+            self.db.xml.remove({'user_id':user_id, 'job_id':job_id, 'sim_id':sim_id})
+            if self.db.jobs.find_one({'job_id':job_id, 'user_id':user_id}) == None:
+                shutil.rmtree(output_dir[:output_dir.rfind(os.path.sep)])
+                self.db.xml.remove({'user_id':user_id, 'job_id':job_id})
+                self.db.fs.files.remove({'user_id':user_id, 'job_id':job_id})
 
         return True
 
