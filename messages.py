@@ -91,3 +91,20 @@ class JobErrorMessage(Message):
     def unpack_msg(self, msg_s):
         return json.loads(msg_s)
 
+class AckNewJobMessage(Message):
+    properties = ['msg']
+    types = ['S']
+    packet_type = 111
+    def pack_msg(self, msg):
+        return json.dumps(msg)
+    def unpack_msg(self, msg_s):
+        return json.loads(msg_s)
+
+class RmJarMessage(Message):
+    properties = ['msg']
+    types = ['S']
+    packet_type = 112
+    def pack_msg(self, msg):
+        return json.dumps(msg)
+    def unpack_msg(self, msg_s):
+        return json.loads(msg_s)

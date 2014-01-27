@@ -1,13 +1,15 @@
-#!/bin/env python2
+#!/usr/bin/python2
 from pysage import *
 from settings import *
 from messages import *
 from database import *
+from network import *
 from subprocess import *
 from traceback import *
+from socket import *
 import time
 import uuid
-import os
+import os, os.path
 import sys
 
 template = '''<?xml version='1.0'?>
@@ -24,7 +26,7 @@ template = '''<?xml version='1.0'?>
 </simulator>'''
 
 class Worker(Actor):
-    subscriptions = ['JobMessage', 'NoJobMessage', 'AckResultMessage', 'KillMessage']
+    subscriptions = ['JobMessage', 'NoJobMessage', 'AckResultMessage', 'KillMessage', 'RmJarMessage']
 
     def __init__(self):
         self.mgr = ActorManager.get_singleton()
@@ -46,13 +48,13 @@ class Worker(Actor):
 
             user_id = sim['user_id']
             sim_id = sim['sim_id']
-            print "executing: " + str(sim_id)
             job_id = sim['job_id']
-            base_name = '%s_%s_%s_%s' % (user_id, str(job_id), str(sim_id), str(sim['sample']))
+            current_sample = sim['sample']
+            print "Executing: ", user_id, job_id, sim_id, current_sample
 
             self.status = 'getting xml'
 
-            xml_name = base_name +'.xml'
+            xml_name = '%s_%i_%i_%i.xml' % (user_id, job_id, sim_id, current_sample)
             meas_xml = self.db.xml.find_one({
                 'type': 'meas',
                 'idref': sim['meas'],
@@ -90,10 +92,11 @@ class Worker(Actor):
                 xml_file.write(xml_string)
 
             # Execute job
-            jar_name = base_name +'.run'
-            with open(jar_name, 'wb') as jar_file:
-                jar = get_file(job_id, user_id)
-                jar_file.write(jar)
+            jar_name = '%s_%i.run' % (user_id, job_id)
+            if not os.path.exists(jar_name):
+                with open(jar_name, 'wb') as jar_file:
+                    jar = get_file(job_id, user_id)
+                    jar_file.write(jar)
 
             self.status = 'executing'
 
@@ -104,35 +107,56 @@ class Worker(Actor):
 
             self.status = 'posting results'
 
-            # send back result
-            if not process.returncode:
-                with open(output_file_name, 'r') as result_file:
-                    self.mgr.broadcast_message(ResultMessage(msg={
-                        'job_id': sim['job_id'],
-                        'sim_id': sim['sim_id'],
-                        'user_id':sim['user_id'],
-                        'result':result_file.read().encode('zlib').encode('base64'),
-                        'sample':sim['sample']
-                    }))
+            print 'Setting up file transfer...'
+            sock = socket(AF_INET, SOCK_STREAM)
+            local_ip = get_local_ip()
+            sock.bind((local_ip, 0))
+            sock.listen(1)
 
-                os.remove(output_file_name)
-            else:
-                self.mgr.broadcast_message(JobErrorMessage(msg={
-                    'job_id': sim['job_id'],
-                    'sim_id': sim['sim_id'],
-                    'user_id':sim['user_id']
-                }))
+            # send back result
+            with open(output_file_name, 'r') as result_file:
+                result = result_file.read().encode('zlib').encode('base64')
+
+            self.mgr.broadcast_message(ResultMessage(msg={
+                'job_id': sim['job_id'],
+                'sim_id': sim['sim_id'],
+                'user_id': sim['user_id'],
+                'sample': sim['sample'],
+                'socket': sock.getsockname(),
+                'm_size': len(result),
+            }))
+
+            print 'Transferring result file on', sock.getsockname()
+            s,a = sock.accept()
+            sendall(s, result)
+            sock.close()
 
             os.remove(xml_name)
-            os.remove(jar_name)
+            os.remove(output_file_name)
+            print
         except Exception, e:
             print 'Worker error: ', e
             print 'Stack trace:'
             print_exc(file=sys.stdout)
             print
+
             #TODO: maybe send an error message to replenish the lost sample
+            self.mgr.broadcast_message(JobErrorMessage(msg={
+                'job_id': sim['job_id'],
+                'sim_id': sim['sim_id'],
+                'user_id':sim['user_id']
+            }))
 
         return True
+
+
+    def handle_RmJarMessage(self, msg):
+        jar_file = msg.get_property('msg')['jar_file']
+
+        if os.path.exists(jar_file):
+            os.remove(jar_file)
+
+        return False
 
 
     def handle_NoJobMessage(self, msg):
@@ -144,7 +168,7 @@ class Worker(Actor):
 
 
     def handle_AckResultMessage(self, msg):
-        print 'ack received'
+        print 'ACK received'
         self.mgr.broadcast_message(JobRequestMessage(msg={'allowed_users':ALLOWED_USERS}))
         self.status = 'ACK Received...'
 
