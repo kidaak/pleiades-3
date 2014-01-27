@@ -1,14 +1,16 @@
-#!/bin/env python2
-import os, sys, shutil
+#!/usr/bin/python2
+import os, sys
 from pysage import *
 from socket import *
 from cStringIO import *
+from shutil import *
 from xml_uploader import *
 from settings import *
 from messages import *
 from database import *
 from traceback import *
 from gatherer import *
+from network import *
 
 class Server(Actor):
     subscriptions = ['JobRequestMessage', 'ResultMessage', 'NewJobMessage', 'KillMessage', 'JobErrorMessage']
@@ -68,68 +70,91 @@ class Server(Actor):
         return True
 
     def handle_ResultMessage(self, msg):
-        self.mgr.send_message(AckResultMessage(msg=0), msg.sender)
-        
-        result = msg.get_property('msg')
+        try:
+            result = msg.get_property('msg')
 
-        user_id = result['user_id']
-        job_id = result['job_id']
-        sim_id = result['sim_id']
-        sample = result['sample']
+            user_id = result['user_id']
+            job_id = result['job_id']
+            sim_id = result['sim_id']
+            sample = result['sample']
 
-        sim = self.db.jobs.find_one({'job_id':job_id, 'sim_id':sim_id, 'user_id':user_id})
-        job_name = sim['job_name']
+            try:
+                sim = self.db.jobs.find_one({'job_id':job_id, 'sim_id':sim_id, 'user_id':user_id})
+                job_name = sim['job_name']
+            except:
+                raise Exception('Job not found')
 
-        print "received result for: " + str(sim_id)
+            # Get results file
+            try:
+                sock = socket(AF_INET, SOCK_STREAM)
+                sock.connect(tuple(result['socket']))
+                result_file_contents = recvall(sock, result['m_size']).decode('base64').decode('zlib')
+                sock.close()
+            except:
+                raise Exception('Error transferring result file')
 
-        output_dir = os.path.join(RESULTS_DIR, str(user_id), str(job_name), str(job_id), str(sim_id))
-        file_name = os.path.join(output_dir, str(sample) + '.txt')
+            print "Received result for: ", user_id, job_id, sim_id
 
-        if not os.path.exists(output_dir):
-            info = os.path.join(output_dir, '.info')
-            os.makedirs(output_dir)
-            with open(info, 'w+') as info_file:
-                info_file.write('user_id: ' + str(sim['user_id']) + '\n')
-                info_file.write('job_name: ' + str(sim['job_name']) + '\n')
-                info_file.write('file_name: ' + str(sim['file_name']) + '\n')
-                info_file.write('samples: ' + str(sim['total_samples']) + '\n')
-                info_file.write('job_id: ' + str(sim['job_id']) + '\n')
-                info_file.write('sim_id: ' + str(sim['sim_id']) + '\n')
+            output_dir = os.path.join(RESULTS_DIR, str(user_id), str(job_name), str(job_id), str(sim_id))
+            file_name = os.path.join(output_dir, str(sample) + '.txt')
 
-        print os.path.exists(file_name), ":", file_name
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+                with open(os.path.join(output_dir, '.info'), 'w+') as info_file:
+                    info_file.write('user_id: ' + str(sim['user_id']) + '\n')
+                    info_file.write('job_name: ' + str(sim['job_name']) + '\n')
+                    info_file.write('file_name: ' + str(sim['file_name']) + '\n')
+                    info_file.write('samples: ' + str(sim['total_samples']) + '\n')
+                    info_file.write('job_id: ' + str(sim['job_id']) + '\n')
+                    info_file.write('sim_id: ' + str(sim['sim_id']) + '\n')
 
-        with open(file_name, 'w+') as result_file:
-            result_file.write(result['result'].decode('base64').decode('zlib'))
+            with open(file_name, 'w+') as result_file:
+                result_file.write(result_file_contents)
 
-        print os.path.exists(file_name), ":", file_name
+            sim['results'].append(file_name)
+            self.db.jobs.save(sim)
 
-        sim['results'].append(file_name)
-        self.db.jobs.save(sim)
+            if sim['total_samples'] == len(sim['results']):
+                print "Gathering ", job_name, 'into', sim['file_name']
 
-        if sim['total_samples'] == len(sim['results']):
-            print "Gathering " + sim['file_name']
+                # Gather, clear temp files and remove sim
+                Gatherer().gather_results(sim)
+                rmtree(output_dir)
+                self.db.jobs.remove(sim)
 
-            g = Gatherer()
-            g.gather_results(sim)
+                # if job is complete clear everything
+                to_find = {'job_id':job_id, 'user_id':user_id}
+                if self.db.jobs.find_one(to_find) == None:
+                    rmtree(output_dir[:output_dir.rfind(os.path.sep)])
 
-            #delete temp files
-            shutil.rmtree(output_dir)
+                    self.db.xml.remove(to_find)
+                    self.db.fs.files.remove(to_find)
 
-            #remove database entries
-            self.db.jobs.remove(sim)
-            self.db.xml.remove({'user_id':user_id, 'job_id':job_id, 'sim_id':sim_id})
-            if self.db.jobs.find_one({'job_id':job_id, 'user_id':user_id}) == None:
-                shutil.rmtree(output_dir[:output_dir.rfind(os.path.sep)])
-                self.db.xml.remove({'user_id':user_id, 'job_id':job_id})
-                self.db.fs.files.remove({'user_id':user_id, 'job_id':job_id})
+                    self.mgr.broadcast_message(RmJarMessage(msg={
+                        'jar_file': '%s_%i.run' % (user_id, job_id)
+                    }))
+                    #TODO: Better message
+                    sendmail(user_id, 'Your job, ' + job_name + ', is done.')
+
+            #TODO: Send status with message
+            self.mgr.send_message(AckResultMessage(msg=0), msg.sender)
+            print
+        except Exception, e:
+            print 'Result received error: ', e
+            print 'Stack trace:'
+            print_exc(file=sys.stdout)
+            print
+            #TODO couldnt gather or some such, do something here
+
+            #TODO: Send status with message
+            self.mgr.send_message(AckResultMessage(msg=0), msg.sender)
 
         return True
 
     def handle_NewJobMessage(self, msg):
         try:
-            print 'New job received'
+            print 'New job received from', msg.sender
             job = msg.get_property('msg')
-
             user = job['user_id']
             job_id = max([j['job_id'] for j in self.db.jobs.find({'user_id': user})] + [0]) + 1
 
@@ -151,27 +176,22 @@ class Server(Actor):
             # Transfer jar
             sock = socket(AF_INET, SOCK_STREAM)
             sock.connect(tuple(job['socket']))
-
-            jar_file = ''
-
-            while len(jar_file) < job['m_size']:
-                data = sock.recv(65536)
-                jar_file += data
-
+            jar_file = recvall(sock, job['m_size']).decode('base64').decode('zlib')
             sock.close()
 
-            put_file(StringIO(jar_file.decode('base64').decode('zlib')), user, job_id)
+            put_file(StringIO(jar_file), user, job_id)
 
-            #TODO: Send status with message
-            self.mgr.send_message(AckResultMessage(msg=0), msg.sender)
+            self.mgr.send_message(AckNewJobMessage(msg={
+                'status':'Uploaded ' + str(len(jobs)) + ' simulations successfully.'
+            }), msg.sender)
+            print
         except Exception, e:
             print 'New job error: ', e
             print 'Stack trace:'
             print_exc(file=sys.stdout)
             print
 
-            #TODO: Send status with message
-            self.mgr.send_message(AckResultMessage(msg=0), msg.sender)
+            self.mgr.send_message(AckNewJobMessage(msg={'status':'Error: could not upload job.'}), msg.sender)
 
         return True
 
@@ -181,14 +201,30 @@ class Server(Actor):
             print 'Received job error'
 
             job = msg.get_property('msg')
-            sim = self.db.jobs.find_one({'user_id':job['user_id'], 'sim_id': job['sim_id'], 'job_id': job['job_id']})
+            user_id = job['user_id']
+            sim_id = job['sim_id']
+            job_id = job['job_id']
+            sim = self.db.jobs.find_one({'user_id': user_id, 'sim_id': sim_id, 'job_id': job_id})
             self.db.jobs.remove(sim)
+
+            to_find = {'job_id':job_id, 'user_id':user_id}
+            if self.db.jobs.find_one(to_find) == None:
+                # leave the directory in case there is salvageable stuff? it could get removed though
+                self.db.xml.remove(to_find)
+                self.db.fs.files.remove(to_find)
+
+                self.mgr.broadcast_message(RmJarMessage(msg={
+                    'jar_file': '%s_%i.run' % (user_id, job_id)
+                }))
+                #TODO: Better message
+                sendmail(user_id, 'Error with simulation number ' + str(sim_id) + ' in job ' + job_name)
 
             print 'Removed job: user', job['user_id'], 'job', job['job_id'], 'sim', job['sim_id']
             #TODO: email user
 
             #TODO: Send status with message
             self.mgr.send_message(AckResultMessage(msg=0), msg.sender)
+            print
         except Exception, e:
             print 'Job error error: ', e
             print 'Stack trace:'
@@ -205,6 +241,11 @@ class Server(Actor):
                 self.mgr.tick()
             except KeyboardInterrupt, SystemExit:
                 self.running = False
+                for j in self.db.jobs.find():
+                    rem = j['total_samples'] - j['samples']
+                    if rem > len(j['results']):
+                        #TODO: replenish 'rem' jobs somehow taking into account the samples that have already arrived
+                        pass
 
 if __name__ == '__main__':
     Server().run()

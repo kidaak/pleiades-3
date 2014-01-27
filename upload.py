@@ -1,13 +1,14 @@
-#!/bin/env python2
+#!/usr/bin/python2
 from pysage import *
 from settings import *
 from messages import *
 from socket import *
+from network import *
 from optparse import OptionParser
 import sys, os
 
 class Uploader(Actor):
-    subscriptions = ['AckResultMessage']
+    subscriptions = ['AckNewJobMessage', 'AckResultMessage']
 
     def __init__(self, args):
         self.mgr = ActorManager.get_singleton()
@@ -15,6 +16,12 @@ class Uploader(Actor):
         self.mgr.connect(transport.SelectTCPTransport, host=SERVER_IP, port=SERVER_PORT)
         self.running = True
         self.args = args
+
+    def handle_AckNewJobMessage(self, msg):
+        status = msg.get_property('msg')['status']
+        print status
+        self.running = False
+        return True
 
     def handle_AckResultMessage(self, msg):
         print 'Received ACK'
@@ -46,7 +53,7 @@ class Uploader(Actor):
 
         print 'Setting up file transfer...'
         sock = socket(AF_INET, SOCK_STREAM)
-        local_ip = [ip for ip in gethostbyname_ex(gethostname())[2] if not ip == '127.0.0.1'][:1][0]
+        local_ip = get_local_ip()
         sock.bind((local_ip, 0))
         sock.listen(1)
 
@@ -63,7 +70,7 @@ class Uploader(Actor):
         print sock.getsockname()
         try:
             s,a = sock.accept()
-            s.sendall(j)
+            sendall(s, j)
             sock.close()
         except:
             print 'Error sending JAR file'
