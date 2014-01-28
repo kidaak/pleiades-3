@@ -92,7 +92,8 @@ class Worker(Actor):
                 xml_file.write(xml_string)
 
             # Execute job
-            jar_name = '%s_%i.run' % (user_id, job_id)
+            jar_name = '%s_%i_%i.run' % (user_id, job_id, self.gid[1])
+
             if not os.path.exists(jar_name):
                 with open(jar_name, 'wb') as jar_file:
                     jar = get_file(job_id, user_id)

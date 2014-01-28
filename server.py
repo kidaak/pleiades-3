@@ -224,6 +224,7 @@ class Server(Actor):
             self.mgr.send_message(AckResultMessage(msg=0), msg.sender)
             print
         except Exception, e:
+            self.mgr.send_message(AckResultMessage(msg=0), msg.sender)
             print 'Job error error: ', e
             print 'Stack trace:'
             print_exc(file=sys.stdout)
