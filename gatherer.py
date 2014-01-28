@@ -22,8 +22,7 @@ class Gatherer:
         linesPerSample = i - comments + 1
         noMeasurements = comments - 1
 
-        file_name = sim['file_name'][sim['file_name'].rfind('/') + 1:]
-        file_path = sim['file_name'][:sim['file_name'].rfind('/')]
+        file_path, file_name = os.path.split(sim['file_name'])
         
         output_dir = os.path.join(RESULTS_DIR, sim['user_id'], sim['job_name'], file_path)
 

@@ -29,10 +29,10 @@ class Server(Actor):
 
 
     def handle_JobRequestMessage(self, msg):
-        print 'Request from:', msg.sender
+        #print 'Request from:', msg.sender
 
         try:
-            print 'Getting job'
+            #print 'Getting job'
 
             allowed_users = msg.get_property('msg')['allowed_users']
             possible_users = self.db.jobs.distinct('user_id')
@@ -50,11 +50,11 @@ class Server(Actor):
             job['sample'] = sample
             del(job['_id'])
 
-            print 'Sending job'
+            #print 'Sending job'
 
             self.mgr.send_message(JobMessage(msg=job), msg.sender)
 
-            print 'Job sent'
+            #print 'Job sent'
             print
         except Exception, e:
             print 'Job request error: ', e
