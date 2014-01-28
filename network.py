@@ -31,6 +31,7 @@ def sendall(sock, data):
 
 
 def sendmail(user, msg):
+    #TODO: put these details in settings.py
     email_addr = get_user_email(user)
 
     msg = MIMEText(msg)

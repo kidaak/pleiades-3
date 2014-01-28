@@ -11,6 +11,7 @@ from database import *
 from traceback import *
 from gatherer import *
 from network import *
+from random import *
 
 class Server(Actor):
     subscriptions = ['JobRequestMessage', 'ResultMessage', 'NewJobMessage', 'KillMessage', 'JobErrorMessage']
@@ -32,24 +33,18 @@ class Server(Actor):
 
         try:
             print 'Getting job'
+
             allowed_users = msg.get_property('msg')['allowed_users']
+            possible_users = self.db.jobs.distinct('user_id')
+            actual_user = [choice([i for i in possible_users if not allowed_users or i in allowed_users])]
 
-            if not allowed_users:
-                job = self.db.jobs.find_one({'samples': {'$gt':0}})
-            else:
-                job = self.db.jobs.find_one({'samples': {'$gt':0}, 'user_id':{'$all':allowed_users}})
-
-            if not job:
-                # No job was found
-                print 'No jobs to run'
-                self.mgr.send_message(NoJobMessage(msg=0), msg.sender)
-                return True
+            job = self.db.jobs.find_one({'samples': {'$gt':0}, 'user_id':{'$all':actual_user}})
 
             sample = job['samples']
             job['samples'] -= 1
             self.db.jobs.save(job)
 
-            print 'Constructing job message (' + str(job['sim_id']) + ')'
+            print 'Constructing job message: ', job['user_id'], job['job_id'], job['sim_id']
 
             job = self.db.xml.find_one({'job_id':job['job_id'], 'sim_id':job['sim_id'], 'type':'sim', 'user_id':job['user_id']})
             job['sample'] = sample
@@ -66,6 +61,9 @@ class Server(Actor):
             print 'Stack trace:'
             print_exc(file=sys.stdout)
             print
+
+            # No job was found
+            self.mgr.send_message(NoJobMessage(msg=0), msg.sender)
 
         return True
 
