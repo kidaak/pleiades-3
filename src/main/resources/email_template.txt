@@ -1,7 +1,0 @@
-Hello, $user
-
-Your job, $job, has completed. Follow the link below to download your results.
-
-$link
-
-Cheers!

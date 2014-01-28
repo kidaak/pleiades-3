@@ -1,0 +1,7 @@
+Dependencies:
+
+lxml
+pymongo
+pysage
+netifaces
+mysql-python
