@@ -101,13 +101,13 @@ class Worker(Actor):
 
             self.status = 'writing files'
 
-            output_file_name = str(uuid.uuid4())
+            output_file_name = os.path.join('results', str(uuid.uuid4()))
             with open(xml_name, 'w') as xml_file:
                 xml_string = template % (
                     '\n'.join([a['value'] for a in algs_xml]),
                     prob_xml['value'],
                     meas_xml['value'],
-                    sim_xml['value'].replace('_output_', paht.os.join('results', output_file_name))
+                    sim_xml['value'].replace('_output_', output_file_name)
                 )
                 xml_file.write(xml_string)
 

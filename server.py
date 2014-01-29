@@ -41,13 +41,13 @@ class DistributionServer(Actor):
 
 
     def send_no_job(self, sender):
-        print '\rNo jobs for worker', sender
+        #print '\rNo jobs for worker', sender
         self.mgr.send_message(NoJobMessage(msg=0), sender)
 
 
     def handle_JobRequestMessage(self, msg):
         try:
-            print 'Request from:', msg.sender,
+            #print 'Request from:', msg.sender,
 
             allowed_users = msg.get_property('msg')['allowed_users']
             possible_users = self.db.jobs.distinct('user_id')
@@ -68,22 +68,22 @@ class DistributionServer(Actor):
             job['samples'] -= 1
             self.db.jobs.save(job)
 
-            print '\rConstructing job: ', job['user_id'], job['job_id'], job['sim_id'], sample,
+            #print '\rConstructing job: ', job['user_id'], job['job_id'], job['sim_id'], sample,
 
             job = self.db.xml.find_one({'job_id':job['job_id'], 'sim_id':job['sim_id'], 'type':'sim', 'user_id':job['user_id']})
             job['sample'] = sample
             del(job['_id'])
 
-            print '\rSending job: ', job['user_id'], job['job_id'], job['sim_id'], sample,
+            #print '\rSending job: ', job['user_id'], job['job_id'], job['sim_id'], sample,
 
             self.mgr.send_message(JobMessage(msg=job), msg.sender)
 
-            print '\rSent job: ', job['user_id'], job['job_id'], job['sim_id'], sample
+            print '\rSent job: ', job['user_id'], job['job_id'], job['sim_id'], sample, msg.sender
             print
         except Exception, e:
             print 'Job request error: ', e
             print 'Stack trace:'
-            print_exc(file=sys.stdout)
+            print_exc(file=open('error.log'))
             print
 
             # No job was found
@@ -114,7 +114,7 @@ class DistributionServer(Actor):
                     'job_id': job_id
                 }))
                 #TODO: Better message
-                sendmail(user_id, 'Error with simulation number ' + str(sim_id) + ' in job ' + job_name)
+                sendmail(user_id, 'Error with simulation number ' + str(sim_id) + ' in a job.')
 
             print 'Removed job: user', job['user_id'], 'job', job['job_id'], 'sim', job['sim_id']
             #TODO: email user
