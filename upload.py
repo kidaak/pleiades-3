@@ -11,11 +11,25 @@ class Uploader(Actor):
     subscriptions = ['AckNewJobMessage', 'AckResultMessage']
 
     def __init__(self, args):
+        self.db, self.connection = mongo_connect(MONGO_RO_USER, MONGO_RO_PWD)
+
         self.mgr = ActorManager.get_singleton()
         self.mgr.register_actor(self)
-        self.mgr.connect(transport.SelectTCPTransport, host=SERVER_IP, port=SERVER_PORT)
+        self.connect()
+
         self.running = True
         self.args = args
+
+
+    def connect(self):
+        port = self.db.info.find_one({'upload_server_port': { '$exists': True }})
+        if not port:
+            print 'Upload server is not running'
+            return False
+
+        self.mgr.connect(transport.SelectTCPTransport, host=SERVER_IP, port=port['upload_server_port'])
+        return True
+
 
     def handle_AckNewJobMessage(self, msg):
         status = msg.get_property('msg')['status']
@@ -23,11 +37,13 @@ class Uploader(Actor):
         self.running = False
         return True
 
+
     def handle_AckResultMessage(self, msg):
         print 'Received ACK'
         #TODO: get status from message
         self.running = False
         return True
+
 
     def upload(self):
         if not options.type.lower() in ['custom', 'master', 'official']:
@@ -85,6 +101,7 @@ class Uploader(Actor):
 
         print 'Completing...'
 
+
 if __name__ == '__main__':
     parser = OptionParser()
     parser.add_option('-j', '--jar', dest='jarfile',
@@ -104,3 +121,4 @@ if __name__ == '__main__':
         sys.exit(1)
 
     Uploader(options).upload()
+
