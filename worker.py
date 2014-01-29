@@ -29,17 +29,37 @@ class Worker(Actor):
     subscriptions = ['JobMessage', 'NoJobMessage', 'AckResultMessage', 'KillMessage', 'RmJarMessage']
 
     def __init__(self):
+        print 'Starting worker'
+        self.db, self.connection = mongo_connect(MONGO_RO_USER, MONGO_RO_PWD)
+
         self.mgr = ActorManager.get_singleton()
         self.mgr.register_actor(self)
-        self.mgr.connect(transport.SelectTCPTransport, host=SERVER_IP, port=SERVER_PORT)
+        if not self.connect():
+            sys.exit(1)
+
         self.mgr.broadcast_message(JobRequestMessage(msg={'allowed_users':ALLOWED_USERS}))
 
-        self.db, self.connection = mongo_connect(MONGO_RO_USER, MONGO_RO_PWD)
         self.status = ''
         self.running = True
 
+
+    def connect(self):
+        port = self.db.info.find_one({'server_port': { '$exists': True }})
+        if not port:
+            print 'Server is not running'
+            return False
+
+        self.mgr.connect(transport.SelectTCPTransport, host=SERVER_IP, port=port['server_port'])
+        return True
+
+
+    def send_job_request(self):
+        self.mgr.broadcast_message(JobRequestMessage(msg={'allowed_users':ALLOWED_USERS}))
+
+
     def get_status_string(self):
         return self.status
+
 
     def handle_JobMessage(self, msg):
         try:
@@ -152,7 +172,8 @@ class Worker(Actor):
 
 
     def handle_RmJarMessage(self, msg):
-        jar_file = msg.get_property('msg')['jar_file']
+        m = msg.get_property('msg')
+        jar_file = '%s_%i_%i.run' % (m['user_id'], m['job_id'], self.gid[1])
 
         if os.path.exists(jar_file):
             os.remove(jar_file)
@@ -187,6 +208,20 @@ class Worker(Actor):
                 self.mgr.tick()
             except KeyboardInterrupt, SystemExit:
                 self.running = False
+            except error:
+                retries = RECONNECT_ATTEMPTS
+                connected = False
+
+                while retries and not connected:
+                    print 'Trying to reconnect,', retries, 'attempt(s) left...'
+                    connected = self.connect()
+                    time.sleep(RECONNECT_TIME)
+                    retries -= 1
+
+                if connected:
+                    self.send_job_request()
+                else:
+                    self.running = False
 
 if __name__ == '__main__':
     Worker().run()
