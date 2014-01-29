@@ -87,7 +87,7 @@ class Worker(Actor):
                     '\n'.join([a['value'] for a in algs_xml]),
                     prob_xml['value'],
                     meas_xml['value'],
-                    sim_xml['value'].replace('_output_', output_file_name)
+                    sim_xml['value'].replace('_output_', paht.os.join('results', output_file_name))
                 )
                 xml_file.write(xml_string)
 
