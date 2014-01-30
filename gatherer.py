@@ -15,21 +15,7 @@ class Gatherer:
                     comments += 1
                     measurements.append(l[l.find(' - ') + 3:l.find('(0)') - 1])
 
-        for f in sim['results']:
-            with open(f, 'r') as sample:
-                [results.append(line) for line in sample if not line.startswith('#')]
-
-        linesPerSample = i - comments + 1
         noMeasurements = comments - 1
-
-        file_path, file_name = os.path.split(sim['file_name'])
-        
-        output_dir = os.path.join(RESULTS_DIR, sim['user_id'], sim['job_name'], file_path)
-
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-
-        output = open(os.path.join(output_dir, file_name), 'w+')
 
         samples = int(sim['total_samples'])
 
@@ -42,8 +28,21 @@ class Gatherer:
                 column += 1
 
         # Get samples
-        measurements = [ results[i * (linesPerSample): (i + 1) * (linesPerSample)] 
-                             for i in range(samples) ]
+        measurements = []
+        for f in sim['results']:
+            with open(f, 'r') as sample:
+                measurements.append([line for line in sample if not line.startswith('#')])
+
+        measurements = sorted(measurements, key=lambda x: -len(x))
+        max_measurement = measurements[0]
+        max_size = len(max_measurement)
+
+        for m in range(len(measurements)):
+            l_m = len(measurements[m])
+            if l_m < max_size:
+                new_m = [i.split(' ') for i in max_measurement[l_m:]]
+                new_m = [i[0] + ' -' * (len(i) - 1) for i in new_m]
+                measurements[m] += new_m
 
         # Group lines by iteration
         lines = [ [ i[j].strip().replace('\n', '') for i in measurements ] 
@@ -54,6 +53,15 @@ class Gatherer:
                                        for k in range(1, noMeasurements + 1)
                                        for j in i])
                                        for i in lines])
+
+        file_path, file_name = os.path.split(sim['file_name'])
+        
+        output_dir = os.path.join(RESULTS_DIR, sim['user_id'], sim['job_name'], file_path)
+
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        output = open(os.path.join(output_dir, file_name), 'w+')
 
         # Write data to file and close
         output.write(header)

@@ -273,11 +273,6 @@ class DistributionServer(Actor):
                 self.db.info.remove({'server_port': { '$exists': True }})
                 self.running = False
 
-                for j in self.db.jobs.find():
-                    rem = j['total_samples'] - j['samples']
-                    if rem > len(j['results']):
-                        #TODO: replenish 'rem' jobs somehow taking into account the samples that have already arrived
-                        pass
             #except Exception:
             #    log.exception(time('Main error'))
 
