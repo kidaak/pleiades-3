@@ -1,4 +1,4 @@
 *~
 *.xml
 *.pyc
-settings.py
+*settings.py

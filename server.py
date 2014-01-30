@@ -1,6 +1,6 @@
 #!/usr/bin/python2
-import os, sys
-import signal
+import os, sys, time as timer
+import logging as log
 from pysage import *
 from socket import *
 from cStringIO import *
@@ -8,18 +8,27 @@ from shutil import *
 from xml_uploader import *
 from settings import *
 from messages import *
-from database import *
 from traceback import *
 from gatherer import *
 from network import *
 from random import *
 
+if os.path.exists('error.log'):
+    os.remove('error.log')
+
+log.basicConfig(level=log.DEBUG, filename='error.log')
+
 class DistributionServer(Actor):
-    subscriptions = ['JobRequestMessage', 'JobErrorMessage', 'ResultMessage']
+    subscriptions = ['JobRequestMessage', 'JobErrorMessage', 'ResultMessage', 'DyingMessage']
 
     def __init__(self):
         print 'Starting distribution server...'
         self.db, self.connection = mongo_connect(MONGO_RW_USER, MONGO_RW_PWD)
+
+        #clear running queue
+        for job in self.db.running.find():
+            self.replenish_job(job['user_id'], job['job_id'], job['sim_id'], job['sample'])
+        self.db.running.remove()
 
         self.mgr = ActorManager.get_singleton()
         self.mgr.register_actor(self)
@@ -45,10 +54,23 @@ class DistributionServer(Actor):
         self.mgr.send_message(NoJobMessage(msg=0), sender)
 
 
+    def replenish_job(self, user_id, job_id, sim_id, sample_id):
+        job = self.db.jobs.find_one({
+            'user_id':user_id,
+            'job_id':job_id,
+            'sim_id':sim_id
+        })
+
+        if job:
+            job['samples'].append(sample_id)
+            self.db.jobs.save(job)
+            return True
+
+        return False
+
+
     def handle_JobRequestMessage(self, msg):
         try:
-            #print 'Request from:', msg.sender,
-
             allowed_users = msg.get_property('msg')['allowed_users']
             possible_users = self.db.jobs.distinct('user_id')
 
@@ -64,69 +86,74 @@ class DistributionServer(Actor):
                 self.send_no_job(msg.sender)
                 return True
 
-            sample = job['samples']
-            job['samples'] -= 1
+            sample = job['samples'].pop()
             self.db.jobs.save(job)
-
-            #print '\rConstructing job: ', job['user_id'], job['job_id'], job['sim_id'], sample,
 
             job = self.db.xml.find_one({'job_id':job['job_id'], 'sim_id':job['sim_id'], 'type':'sim', 'user_id':job['user_id']})
             job['sample'] = sample
             del(job['_id'])
 
-            #print '\rSending job: ', job['user_id'], job['job_id'], job['sim_id'], sample,
-
+            #TODO: maybe check if worker is in running queue (is it possible?)
             self.mgr.send_message(JobMessage(msg=job), msg.sender)
 
-            print '\rSent job: ', job['user_id'], job['job_id'], job['sim_id'], sample, msg.sender
+            self.db.running.insert({
+                'job_id': job['job_id'],
+                'sim_id': job['sim_id'],
+                'user_id': job['user_id'],
+                'sample': job['sample'],
+                'worker_id': msg.get_property('msg')['worker_id']
+            })
+
+            print '\rSent job:', job['user_id'], job['job_id'], job['sim_id'], sample, 'to', msg.sender, msg.get_property('msg')['worker_id']
             print
         except Exception, e:
-            print 'Job request error: ', e
-            print 'Stack trace:'
-            print_exc(file=open('error.log'))
-            print
+            t = time('Job error')
+            print t
+            log.exception(t)
 
             # No job was found
-            self.mgr.send_message(NoJobMessage(msg=0), msg.sender)
+            self.send_no_job(msg.sender)
 
         return True
 
 
     def handle_JobErrorMessage(self, msg):
         try:
-            print 'Received job error'
-
             job = msg.get_property('msg')
             user_id = job['user_id']
             sim_id = job['sim_id']
             job_id = job['job_id']
+
+            print time(), 'Received job error', user_id, job_id, sim_id
+
             sim = self.db.jobs.find_one({'user_id': user_id, 'sim_id': sim_id, 'job_id': job_id})
-            self.db.jobs.remove(sim)
 
-            to_find = {'job_id':job_id, 'user_id':user_id}
-            if self.db.jobs.find_one(to_find) == None:
-                # leave the directory in case there is salvageable stuff? it could get removed though
-                self.db.xml.remove(to_find)
-                self.db.fs.files.remove(to_find)
-
-                self.mgr.broadcast_message(RmJarMessage(msg={
-                    'user_id': user_id,
-                    'job_id': job_id
-                }))
+            if sim:
+                self.db.jobs.remove(sim)
                 #TODO: Better message
-                sendmail(user_id, 'Error with simulation number ' + str(sim_id) + ' in a job.')
+                sendmail(user_id, 'Error with simulation number ' + str(sim_id) + ' in job ' + sim['job_name'] + '.')
+                print 'Removed job:', user_id, job_id, sim_id
 
-            print 'Removed job: user', job['user_id'], 'job', job['job_id'], 'sim', job['sim_id']
-            #TODO: email user
+                to_find = {'job_id':job_id, 'user_id':user_id}
+                if self.db.jobs.find_one(to_find) == None:
+                    # leave the directory in case there is salvageable stuff? it could get removed though
+                    self.db.xml.remove(to_find)
+                    self.db.fs.files.remove(to_find)
 
+                    self.mgr.broadcast_message(RmJarMessage(msg={
+                        'user_id': user_id,
+                        'job_id': job_id
+                    }))
+                    sendmail(user_id, 'Your job, ' + sim['job_name'] + ', is complete.')
+
+            print
+        except:
+            t = time('Job error error')
+            print t
+            log.exception(t)
+        finally:
             #TODO: Send status with message
             self.mgr.send_message(AckResultMessage(msg=0), msg.sender)
-            print
-        except Exception, e:
-            print 'Job error error: ', e
-            print 'Stack trace:'
-            print_exc(file=sys.stdout)
-            print
 
         return True
 
@@ -140,11 +167,14 @@ class DistributionServer(Actor):
             sim_id = result['sim_id']
             sample = result['sample']
 
-            try:
-                sim = self.db.jobs.find_one({'job_id':job_id, 'sim_id':sim_id, 'user_id':user_id})
-                job_name = sim['job_name']
-            except:
-                raise Exception('Job not found')
+            self.db.running.remove({'worker_id': result['worker_id']})
+
+            sim = self.db.jobs.find_one({'job_id':job_id, 'sim_id':sim_id, 'user_id':user_id})
+            if not sim:
+                print 'Job not found in database:', user_id, job_id, sim_id
+                return True
+
+            job_name = sim['job_name']
 
             # Get results file
             try:
@@ -199,28 +229,47 @@ class DistributionServer(Actor):
                     #TODO: Better message
                     sendmail(user_id, 'Your job, ' + job_name + ', is done.')
 
-            #TODO: Send status with message
-            self.mgr.send_message(AckResultMessage(msg=0), msg.sender)
             print
         except Exception, e:
-            print 'Result received error: ', e
-            print 'Stack trace:'
-            print_exc(file=sys.stdout)
-            print
-            #TODO couldnt gather or some such, do something here
-
+            t = time('Result error')
+            print t
+            log.exception(t)
+        finally:
             #TODO: Send status with message
             self.mgr.send_message(AckResultMessage(msg=0), msg.sender)
 
         return True
 
 
+    def handle_DyingMessage(self, msg):
+        try:
+            print 'Man down!'
+            worker = msg.get_property('msg')['worker_id']
+            rjob = self.db.running.find_one({'worker_id':worker})
+
+            if rjob:
+                self.replenish_job(rjob['user_id'], rjob['job_id'], rjob['sim_id'], rjob['sample'])
+                self.db.running.remove(rjob)
+        except:
+            t = time('Dying error')
+            print t
+            log.exception(t)
+
+        return True
+
+
     def run(self):
         print 'Ready to distribute jobs...'
+        t = timer.time()
         while self.running:
             try:
+                if timer.time() - t > 300:
+                    print time('Alive')
+                    t = timer.time()
+
                 self.mgr.tick()
             except (KeyboardInterrupt, SystemExit):
+                print 'Clearing port information.'
                 self.db.info.remove({'server_port': { '$exists': True }})
                 self.running = False
 
@@ -229,6 +278,8 @@ class DistributionServer(Actor):
                     if rem > len(j['results']):
                         #TODO: replenish 'rem' jobs somehow taking into account the samples that have already arrived
                         pass
+            #except Exception:
+            #    log.exception(time('Main error'))
 
 
 if __name__ == '__main__':

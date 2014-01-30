@@ -2,7 +2,6 @@
 from pysage import *
 from settings import *
 from messages import *
-from database import *
 from network import *
 from subprocess import *
 from traceback import *
@@ -37,7 +36,7 @@ class Worker(Actor):
         if not self.connect():
             sys.exit(1)
 
-        self.mgr.broadcast_message(JobRequestMessage(msg={'allowed_users':ALLOWED_USERS}))
+        self.send_job_request()
 
         self.status = ''
         self.running = True
@@ -46,15 +45,42 @@ class Worker(Actor):
     def connect(self):
         port = self.db.info.find_one({'server_port': { '$exists': True }})
         if not port:
-            print 'Server is not running'
+            print 'Distribution server is not running'
             return False
 
-        self.mgr.connect(transport.SelectTCPTransport, host=SERVER_IP, port=port['server_port'])
+        try:
+            self.mgr.connect(transport.SelectTCPTransport, host=SERVER_IP, port=port['server_port'])
+        except:
+            return False
+
+        print 'Connected to distribution server.'
         return True
 
 
+    def reconnect(self):
+        retries = RECONNECT_ATTEMPTS
+        connected = False
+
+        while retries and not connected:
+            print 'Trying to reconnect,', retries, 'attempt(s) left...'
+            connected = self.connect()
+            time.sleep(RECONNECT_TIME)
+            retries -= 1
+
+        if connected:
+            self.send_job_request()
+            return True
+        else:
+            self.running = False
+            self.mgr.broadcast_message(DyingMessage(msg={'worker_id':self.gid[1]}))
+            return False
+
+
     def send_job_request(self):
-        self.mgr.broadcast_message(JobRequestMessage(msg={'allowed_users':ALLOWED_USERS}))
+        self.mgr.broadcast_message(JobRequestMessage(msg={
+            'allowed_users': ALLOWED_USERS,
+            'worker_id': self.gid[1]
+        }))
 
 
     def get_status_string(self):
@@ -130,6 +156,7 @@ class Worker(Actor):
 
             print 'Setting up file transfer...'
             sock = socket(AF_INET, SOCK_STREAM)
+            sock.settimeout(SOCKET_TIMEOUT)
             local_ip = get_local_ip()
             sock.bind((local_ip, 0))
             sock.listen(1)
@@ -145,16 +172,20 @@ class Worker(Actor):
                 'sample': sim['sample'],
                 'socket': sock.getsockname(),
                 'm_size': len(result),
+                'worker_id': self.gid[1]
             }))
+
+            os.remove(xml_name)
+            os.remove(output_file_name)
 
             print 'Transferring result file on', sock.getsockname()
             s,a = sock.accept()
             sendall(s, result)
             sock.close()
-
-            os.remove(xml_name)
-            os.remove(output_file_name)
             print
+        except error:
+            self.send_job_request()
+            return True
         except Exception, e:
             print 'Worker error: ', e
             print 'Stack trace:'
@@ -183,7 +214,7 @@ class Worker(Actor):
 
     def handle_NoJobMessage(self, msg):
         time.sleep(1)
-        self.mgr.broadcast_message(JobRequestMessage(msg={'allowed_users':ALLOWED_USERS}))
+        self.send_job_request()
         self.status = 'request resent'
 
         return True
@@ -191,7 +222,7 @@ class Worker(Actor):
 
     def handle_AckResultMessage(self, msg):
         print 'ACK received'
-        self.mgr.broadcast_message(JobRequestMessage(msg={'allowed_users':ALLOWED_USERS}))
+        self.send_job_request()
         self.status = 'ACK Received...'
 
         return True
@@ -209,19 +240,9 @@ class Worker(Actor):
             except KeyboardInterrupt, SystemExit:
                 self.running = False
             except error:
-                retries = RECONNECT_ATTEMPTS
-                connected = False
+                self.reconnect()
 
-                while retries and not connected:
-                    print 'Trying to reconnect,', retries, 'attempt(s) left...'
-                    connected = self.connect()
-                    time.sleep(RECONNECT_TIME)
-                    retries -= 1
-
-                if connected:
-                    self.send_job_request()
-                else:
-                    self.running = False
+        self.mgr.broadcast_message(DyingMessage(msg={'worker_id':self.gid[1]}))
 
 if __name__ == '__main__':
     Worker().run()
