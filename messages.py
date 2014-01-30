@@ -1,5 +1,9 @@
 from pysage import Message
 import json
+import datetime
+
+def time(m):
+    return m + ' : ' + str(datetime.datetime.now().isoformat())
 
 class PleiadesMessage(Message):
     properties = ['msg']
@@ -44,4 +48,7 @@ class AckNewJobMessage(PleiadesMessage):
 
 class RmJarMessage(PleiadesMessage):
     packet_type = 112
+
+class DyingMessage(PleiadesMessage):
+    packet_type = 113
 

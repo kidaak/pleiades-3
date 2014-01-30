@@ -1,5 +1,5 @@
 import sys, os
-from database import *
+from network import *
 from settings import *
 
 class Gatherer:

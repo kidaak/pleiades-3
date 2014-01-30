@@ -7,7 +7,6 @@ from shutil import *
 from xml_uploader import *
 from settings import *
 from messages import *
-from database import *
 from traceback import *
 from gatherer import *
 from network import *
@@ -61,7 +60,7 @@ class UploadServer(Actor):
                 'user_id': user,
                 'job_name': job['name'],
                 'file_name': j[2],
-                'samples': j[1],
+                'samples': range(1, j[1] + 1),
                 'total_samples': j[1],
                 'job_id': job_id,
                 'sim_id': j[0],

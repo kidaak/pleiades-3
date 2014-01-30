@@ -1,5 +1,5 @@
 from lxml import etree
-from database import *
+from network import *
 
 class XML_Uploader:
     def upload_xml(self, file, job, user):
