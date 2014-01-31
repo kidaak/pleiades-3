@@ -13,6 +13,20 @@ from gatherer import *
 from network import *
 from random import *
 
+ERROR_TEMPLATE = '''
+Dear %s,
+
+There was the following error with simulation number %i in job %s.
+
+The status of the error is:
+%s
+
+Have a nice day!
+
+Regards,
+Pleiades
+'''
+
 if os.path.exists('error.log'):
     os.remove('error.log')
 
@@ -123,15 +137,20 @@ class DistributionServer(Actor):
             user_id = job['user_id']
             sim_id = job['sim_id']
             job_id = job['job_id']
+            error = job['error'].decode('base64').decode('zlib')
+            worker_id = job['worker_id']
 
-            print time(), 'Received job error', user_id, job_id, sim_id
+            print time('Received job error %s %i %i from %s' % (user_id, job_id, sim_id, str(worker_id)))
 
             sim = self.db.jobs.find_one({'user_id': user_id, 'sim_id': sim_id, 'job_id': job_id})
+            job_name = sim['job_name']
 
             if sim:
                 self.db.jobs.remove(sim)
                 #TODO: Better message
-                sendmail(user_id, 'Error with simulation number ' + str(sim_id) + ' in job ' + sim['job_name'] + '.')
+                print job_name
+                print error
+                sendmail(user_id, ERROR_TEMPLATE % (user_id, sim_id, job_name, error))
                 print 'Removed job:', user_id, job_id, sim_id
 
                 to_find = {'job_id':job_id, 'user_id':user_id}

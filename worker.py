@@ -38,6 +38,8 @@ class Worker(Actor):
 
         self.send_job_request()
 
+        print 'I am:', self.worker_id
+
         self.status = ''
         self.running = True
 
@@ -53,6 +55,7 @@ class Worker(Actor):
         except:
             return False
 
+        self.worker_id = (self.mgr.transport.address[0], self.mgr.transport.address[1], self.gid[1])
         print 'Connected to distribution server.'
         return True
 
@@ -72,14 +75,13 @@ class Worker(Actor):
             return True
         else:
             self.running = False
-            self.mgr.broadcast_message(DyingMessage(msg={'worker_id':self.gid[1]}))
             return False
 
 
     def send_job_request(self):
         self.mgr.broadcast_message(JobRequestMessage(msg={
             'allowed_users': ALLOWED_USERS,
-            'worker_id': self.gid[1]
+            'worker_id': self.worker_id
         }))
 
 
@@ -89,7 +91,7 @@ class Worker(Actor):
 
     def handle_JobMessage(self, msg):
         try:
-            self.status = 'job received'
+            self.status = 'Job received'
             sim = msg.get_property('msg')
 
             user_id = sim['user_id']
@@ -98,7 +100,7 @@ class Worker(Actor):
             current_sample = sim['sample']
             print "Executing: ", user_id, job_id, sim_id, current_sample
 
-            self.status = 'getting xml'
+            self.status = 'Getting xml'
 
             xml_name = '%s_%i_%i_%i.xml' % (user_id, job_id, sim_id, current_sample)
             meas_xml = self.db.xml.find_one({
@@ -125,7 +127,7 @@ class Worker(Actor):
                 'user_id':user_id
             })
 
-            self.status = 'writing files'
+            self.status = 'Writing files'
 
             output_file_name = os.path.join('results', str(uuid.uuid4()))
             with open(xml_name, 'w') as xml_file:
@@ -145,14 +147,27 @@ class Worker(Actor):
                     jar = get_file(job_id, user_id)
                     jar_file.write(jar)
 
-            self.status = 'executing'
+            self.status = 'Executing'
 
-            process = Popen(['java', '-jar', jar_name, xml_name], stdout=PIPE)
+            process = Popen(['java', '-jar', jar_name, xml_name], stdout=PIPE, stderr=PIPE)
             while process.poll() == None:
                 self.status = process.stdout.read(256)
                 print self.status,
 
-            self.status = 'posting results'
+            os.remove(xml_name)
+
+            errors = process.communicate()[1]
+            if errors:
+                self.mgr.broadcast_message(JobErrorMessage(msg={
+                    'job_id': sim['job_id'],
+                    'sim_id': sim['sim_id'],
+                    'user_id':sim['user_id'],
+                    'error': errors.encode('zlib').encode('base64'),
+                    'worker_id': self.worker_id
+                }))
+                return True
+
+            self.status = 'Posting results'
 
             print 'Setting up file transfer...'
             sock = socket(AF_INET, SOCK_STREAM)
@@ -172,10 +187,9 @@ class Worker(Actor):
                 'sample': sim['sample'],
                 'socket': sock.getsockname(),
                 'm_size': len(result),
-                'worker_id': self.gid[1]
+                'worker_id': self.worker_id
             }))
 
-            os.remove(xml_name)
             os.remove(output_file_name)
 
             print 'Transferring result file on', sock.getsockname()
@@ -192,11 +206,12 @@ class Worker(Actor):
             print_exc(file=sys.stdout)
             print
 
-            #TODO: maybe send an error message to replenish the lost sample
             self.mgr.broadcast_message(JobErrorMessage(msg={
                 'job_id': sim['job_id'],
                 'sim_id': sim['sim_id'],
-                'user_id':sim['user_id']
+                'user_id': sim['user_id'],
+                'error': self.status.encode('zlib').encode('base64'),
+                'worker_id': self.worker_id
             }))
 
         return True
@@ -207,6 +222,7 @@ class Worker(Actor):
         jar_file = '%s_%i_%i.run' % (m['user_id'], m['job_id'], self.gid[1])
 
         if os.path.exists(jar_file):
+            print 'Removing jar file', jar_file
             os.remove(jar_file)
 
         return False
@@ -215,7 +231,7 @@ class Worker(Actor):
     def handle_NoJobMessage(self, msg):
         time.sleep(1)
         self.send_job_request()
-        self.status = 'request resent'
+        self.status = 'Request resent'
 
         return True
 
@@ -230,6 +246,7 @@ class Worker(Actor):
 
     def handle_KillMessage(self, msg):
         self.running = False
+        self.mgr.broadcast_message(DyingMessage(msg={'worker_id':self.worker_id}))
         return True
 
 
@@ -239,10 +256,10 @@ class Worker(Actor):
                 self.mgr.tick()
             except KeyboardInterrupt, SystemExit:
                 self.running = False
+                self.mgr.broadcast_message(DyingMessage(msg={'worker_id':self.worker_id}))
             except error:
                 self.reconnect()
 
-        self.mgr.broadcast_message(DyingMessage(msg={'worker_id':self.gid[1]}))
 
 if __name__ == '__main__':
     Worker().run()
