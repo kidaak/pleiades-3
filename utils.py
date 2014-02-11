@@ -1,11 +1,16 @@
+from pysage import *
 from netifaces import *
 from smtplib import *
 from email.MIMEText import *
 from pymongo import *
 from settings import *
+import socket
+import logging
+import logging.handlers
 import MySQLdb as sql
 import gridfs
 import sys
+import os.path
 
 def mongo_connect(user, pwd):
     connection = Connection(MONGO_IP, MONGO_PORT)
@@ -33,6 +38,15 @@ def put_file(fname, user_id, job_id):
     r = grid.put(fname, user_id=user_id, job_id=job_id)
     con.close()
     return r
+
+
+def get_port(server):
+    db, con = mongo_connect(MONGO_RO_USER, MONGO_RO_PWD)
+    port = db.info.find_one({server: { '$exists': True }})
+    con.close()
+    if port:
+        return port[server]
+    return None
 
 
 def get_user_email(user):
@@ -89,4 +103,29 @@ def sendmail(user, msg):
     s = SMTP('student.up.ac.za', 25, 'Pleiades')
     s.sendmail('no-reply@cs.up.ac.za', [email_addr], msg.as_string())
     s.quit()
+
+
+def get_logger(name):
+    if not os.path.exists('logs'):
+        os.mkdir('logs')
+    log = logging.getLogger(name)
+    log.setLevel(logging.DEBUG)
+
+    handler = logging.handlers.RotatingFileHandler(os.path.join('logs', name + '.log'), maxBytes=10240*100, backupCount=10)
+    handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s - %(message)s'))
+
+    log.addHandler(handler)
+    return log
+
+class ReconnectingTCPTransport(transport.SelectTCPTransport):
+    def connect(self, host, port, d_handler):
+        transport.SelectTCPTransport.connect(self, host, port)
+        self.disconnect_handler = d_handler
+
+    def poll(self, packet_handler):
+        try:
+            transport.SelectTCPTransport.poll(self, packet_handler)
+        except socket.error:
+            self.disconnect_handler()
+            self.poll(packet_handler)
 

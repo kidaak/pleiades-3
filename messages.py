@@ -31,7 +31,7 @@ class NoJobMessage(PleiadesMessage):
 class NewJobMessage(PleiadesMessage):
     packet_type = 106
 
-class RequestStatusMessage(PleiadesMessage):
+class JoinMessage(PleiadesMessage):
     packet_type = 107
 
 class StatusMessage(PleiadesMessage):
