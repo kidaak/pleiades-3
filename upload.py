@@ -2,8 +2,8 @@
 from pysage import *
 from settings import *
 from messages import *
+from utils import *
 from socket import *
-from network import *
 from optparse import OptionParser
 import sys, os
 

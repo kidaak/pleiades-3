@@ -5,3 +5,4 @@ pymongo
 pysage
 netifaces
 mysql-python
+pysmb

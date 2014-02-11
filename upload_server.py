@@ -1,7 +1,6 @@
 #!/usr/bin/python2
 import os, sys
 from pysage import *
-from socket import *
 from cStringIO import *
 from shutil import *
 from xml_uploader import *
@@ -9,7 +8,8 @@ from settings import *
 from messages import *
 from traceback import *
 from gatherer import *
-from network import *
+from utils import *
+from socket import *
 
 class UploadServer(Actor):
     subscriptions = ['NewJobMessage']
@@ -26,6 +26,9 @@ class UploadServer(Actor):
 
 
     def listen(self):
+        if self.mgr.transport and self.mgr.transport._is_connected:
+            self.mgr.disconnect()
+
         self.mgr.listen(transport.SelectTCPTransport, host=SERVER_IP, port=0)
 
         new_port = self.mgr.transport.address[1]
@@ -45,7 +48,7 @@ class UploadServer(Actor):
             job_id = max([j['job_id'] for j in self.db.jobs.find({'user_id': user})] + [0]) + 1
 
             # Upload XML
-            jobs = XML_Uploader().upload_xml(StringIO(job['xml'].decode('base64').decode('zlib')), job_id, user)
+            jobs = upload_xml(StringIO(job['xml'].decode('base64').decode('zlib')), job_id, user)
 
             # Transfer jar
             sock = socket(AF_INET, SOCK_STREAM)
@@ -87,10 +90,16 @@ class UploadServer(Actor):
         while self.running:
             try:
                 self.mgr.tick()
+
+            except error:
+                self.listen()
+
             except KeyboardInterrupt, SystemExit:
                 port = self.db.info.remove({'upload_server_port': { '$exists': True }})
                 self.running = False
 
+            except Exception, e:
+                print 'ERROR:', e
 
 if __name__ == '__main__':
     UploadServer().run()
