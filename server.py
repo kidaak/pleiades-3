@@ -1,5 +1,5 @@
 #!/usr/bin/python2
-import os, sys, time as timer
+import re, os, sys, time as timer
 import logging as log
 from pysage import *
 from socket import *
@@ -94,6 +94,7 @@ class DistributionServer(Actor):
     def handle_JobRequestMessage(self, msg):
         try:
             worker_id = msg.get_property('msg')['worker_id']
+            worker_host = worker_id.split('-')[0]
             #self.log.info('Request from ' + worker_id)
 
             allowed_users = msg.get_property('msg')['allowed_users']
@@ -101,21 +102,17 @@ class DistributionServer(Actor):
             possible_users = [i for i in available_users if not allowed_users or i in allowed_users]
 
             actual_user = self.db.running.aggregate([
-                {
-                    '$match': {'user_id': {'$in': possible_users}}
-                }, {
-                    '$group': {'_id': '$user_id', 'count': {'$sum': 1}}
-                }
+                {'$match': {'user_id': {'$in': possible_users}, 'worker_id': re.compile('^' + worker_host + '.*')}},
+                {'$group': {'_id': '$user_id', 'count': {'$sum': 1}}}
             ])['result']
 
             for i in possible_users:
                 if i not in [j['_id'] for j in actual_user]:
                     actual_user.append({'_id':i, 'count':0})
 
-            actual_user = sorted(actual_user, key=lambda x:x['count'])
-
             try:
-                actual_user = actual_user[0]['_id']
+                min_count = sorted(actual_user, key=lambda x:x['count'])[0]['count']
+                actual_user = choice([i['_id'] for i in actual_user if i['count'] == min_count])
             except:
                 try:
                     actual_user = choice(possible_users)
@@ -156,7 +153,8 @@ class DistributionServer(Actor):
                 'sim_id': job['sim_id'],
                 'user_id': job['user_id'],
                 'sample': job['sample'],
-                'worker_id': worker_id
+                'worker_id': worker_id,
+                'custom': bool(allowed_users)
             })
 
             print 'Sent job:', job['user_id'], job['job_id'], job['sim_id'], sample, 'to', worker_id

@@ -113,26 +113,20 @@ class Worker(Actor):
             self.send_status('Writing input files', job_id, sim_id, user_id, sample)
 
             xml = construct_xml(sim, out_name)
-            set_status('1')
             if not xml:
                 self.errors = 'Error constructing XML (check idrefs?)'
                 set_status(self.errors)
                 raise Exception(self.errors)
-            set_status('2')
 
             with open(xml_name, 'w') as xml_file:
                 xml_file.write(xml)
-            set_status('3')
 
             if not os.path.exists(jar_name):
-                set_status('4')
                 with open(jar_name, 'wb') as jar_file:
                     jar_file.write(get_file(job_id, user_id))
-            set_status('5')
 
             process = Popen(['java', '-jar', jar_name, xml_name], stdout=PIPE, stderr=PIPE)
             p_timer = time.time()
-            set_status('6')
 
             while process.poll() == None:
                 status = process.stdout.read(128)
@@ -223,6 +217,7 @@ class Worker(Actor):
 
 
     def handle_NoJobMessage(self, msg):
+        self.ack_timer = time.time()
         self.send_status('No job', -1, -1, '', -1)
         time.sleep(5)
         self.send_job_request()
@@ -242,6 +237,7 @@ class Worker(Actor):
         if time.time() - self.ack_timer > ACK_TIMEOUT:
             self.log.info('ACK timeout: reconnecting')
             self.connect()
+            self.send_job_request()
 
 
 class WorkerProgress(Actor):
