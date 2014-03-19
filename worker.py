@@ -102,6 +102,7 @@ class Worker(Actor):
             sim_id = sim['sim_id']
             job_id = sim['job_id']
             sample = sim['sample']
+            jar_hash = sim['jar_hash']
 
             self.send_status('Starting job', job_id, sim_id, user_id, sample)
 
@@ -123,7 +124,7 @@ class Worker(Actor):
 
             if not os.path.exists(jar_name):
                 with open(jar_name, 'wb') as jar_file:
-                    jar_file.write(get_file(job_id, user_id))
+                    jar_file.write(get_file(jar_hash))
 
             process = Popen(['java', '-jar', jar_name, xml_name], stdout=PIPE, stderr=PIPE)
             p_timer = time.time()
@@ -166,6 +167,7 @@ class Worker(Actor):
                     'sim_id': sim_id,
                     'user_id': user_id,
                     'sample': sample,
+                    'jar_hash': jar_hash,
                     'worker_id': self.worker_id
                 }))
 
@@ -187,6 +189,7 @@ class Worker(Actor):
                     'sim_id': sim_id,
                     'user_id': user_id,
                     'sample': sample,
+                    'jar_hash': jar_hash,
                     'error': self.status.encode('zlib').encode('base64'),
                     'replenish': not self.errors,
                     'worker_id': self.worker_id
@@ -217,7 +220,6 @@ class Worker(Actor):
 
 
     def handle_NoJobMessage(self, msg):
-        self.ack_timer = time.time()
         self.send_status('No job', -1, -1, '', -1)
         time.sleep(5)
         self.send_job_request()
@@ -347,7 +349,7 @@ class WorkerProgress(Actor):
                         self.ex_log.exception('Curses error')
 
                 # Upload progress every minute
-                if time.time() - progress_timer > 60:
+                if time.time() - progress_timer > PROGRESS_UPDATE_INTERVAL:
                     con = None
                     try:
                         db, con = mongo_connect(MONGO_RW_USER, MONGO_RW_PWD)
@@ -403,7 +405,7 @@ class WorkerProgress(Actor):
 
             except Exception, e:
                 self.ex_log.exception('ERRORORROR')
-                self.log.info('Exception: ' + e)
+                self.log.info('Exception: ' + e.value)
 
 
 mgr = ActorManager.get_singleton()

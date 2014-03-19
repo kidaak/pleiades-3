@@ -110,8 +110,11 @@ class DistributionServer(Actor):
                 if i not in [j['_id'] for j in actual_user]:
                     actual_user.append({'_id':i, 'count':0})
 
+            print actual_user
+
             try:
                 min_count = sorted(actual_user, key=lambda x:x['count'])[0]['count']
+                print [i['_id'] for i in actual_user if i['count'] == min_count]
                 actual_user = choice([i['_id'] for i in actual_user if i['count'] == min_count])
             except:
                 try:
@@ -135,10 +138,12 @@ class DistributionServer(Actor):
 
             job = job.next()
             sample = job['samples'].pop()
+            jar_hash = job['jar_hash']
             self.db.jobs.save(job)
 
             job = self.db.xml.find_one({'job_id':job['job_id'], 'sim_id':job['sim_id'], 'type':'sim', 'user_id':job['user_id']})
             job['sample'] = sample
+            job['jar_hash'] = jar_hash
             del(job['_id'])
 
             self.mgr.send_message(JobMessage(msg=job), msg.sender)
@@ -177,6 +182,7 @@ class DistributionServer(Actor):
             sim_id = job['sim_id']
             job_id = job['job_id']
             sample = job['sample']
+            jar_hash = job['jar_hash']
             worker_id = job['worker_id']
             replenish = job['replenish']
             error = job['error'].decode('base64').decode('zlib')
@@ -205,7 +211,7 @@ class DistributionServer(Actor):
                 if self.db.jobs.find_one(to_find) == None:
                     # leave the directory in case there is salvageable stuff? it could get removed though
                     self.db.xml.remove(to_find)
-                    self.db.fs.files.remove(to_find)
+                    self.db.fs.files.remove({'jar_hash':jar_hash})
 
                     self.mgr.broadcast_message(RmJarMessage(msg={
                         'user_id': user_id,
@@ -235,6 +241,7 @@ class DistributionServer(Actor):
             job_id = result['job_id']
             sim_id = result['sim_id']
             sample = result['sample']
+            jar_hash = result['jar_hash']
             worker_id = result['worker_id']
 
             self.log.info("Received result for: %s %i %i %i from %s" % (user_id, job_id, sim_id, sample, worker_id))
@@ -271,7 +278,7 @@ class DistributionServer(Actor):
             sim['results'].append(file_name)
             self.db.jobs.save(sim)
 
-            if self.db.jobs.find_one({'job_id':job_id, 'user_id':user_id}) == None:
+            if len(sim['results']) == sim['total_samples']:
                 self.mgr.broadcast_message(RmJarMessage(msg={
                     'user_id': user_id,
                     'job_id': job_id

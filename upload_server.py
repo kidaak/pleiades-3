@@ -46,34 +46,37 @@ class UploadServer(Actor):
             job = msg.get_property('msg')
             user = job['user_id']
             job_id = max([j['job_id'] for j in self.db.jobs.find({'user_id': user})] + [0]) + 1
+            jar_hash = job['jar_hash']
 
             # Upload XML
             jobs = upload_xml(StringIO(job['xml'].decode('base64').decode('zlib')), job_id, user)
 
-            # Transfer jar
-            sock = socket(AF_INET, SOCK_STREAM)
-            sock.connect(tuple(job['socket']))
-            jar_file = recvall(sock, job['m_size']).decode('base64').decode('zlib')
-            sock.close()
+            if jobs != None:
+                # Transfer jar
+                sock = socket(AF_INET, SOCK_STREAM)
+                sock.connect(tuple(job['socket']))
+                jar_file = recvall(sock, job['m_size']).decode('base64').decode('zlib')
+                sock.close()
 
-            put_file(StringIO(jar_file), user, job_id)
+                put_file(StringIO(jar_file), jar_hash)
 
-            # Upload jobs
-            self.db.jobs.insert([{
-                'user_id': user,
-                'job_name': job['name'],
-                'file_name': j[2],
-                'samples': range(1, j[1] + 1),
-                'total_samples': j[1],
-                'job_id': job_id,
-                'sim_id': j[0],
-                'results': []
-            } for j in jobs])
+                # Upload jobs
+                self.db.jobs.insert([{
+                    'user_id': user,
+                    'job_name': job['name'],
+                    'file_name': j[2],
+                    'samples': range(1, j[1] + 1),
+                    'total_samples': j[1],
+                    'job_id': job_id,
+                    'sim_id': j[0],
+                    'jar_hash': jar_hash,
+                    'results': []
+                } for j in jobs])
 
-            self.mgr.send_message(AckNewJobMessage(msg={
-                'status':'Uploaded ' + str(len(jobs)) + ' simulations successfully.'
-            }), msg.sender)
-            print
+                self.mgr.send_message(AckNewJobMessage(msg={
+                    'status':'Uploaded ' + str(len(jobs)) + ' simulations successfully.'
+                }), msg.sender)
+                print
         except Exception, e:
             print 'New job error: ', e
             print 'Stack trace:'

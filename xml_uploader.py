@@ -20,6 +20,7 @@ def upload_xml(file, job, user):
         tree = etree.parse(file, parser)
     except etree.XMLSyntaxError as e:
         print('XML Syntax Error in {0}:\n{1}'.format(file, e.message))
+        return None
 
     #find all <algorithm id=""/> elements
     algorithms = []

@@ -11,6 +11,7 @@ import MySQLdb as sql
 import gridfs
 import sys
 import os.path
+import hashlib
 
 def mongo_connect(user, pwd):
     connection = Connection(MONGO_IP, MONGO_PORT)
@@ -24,18 +25,22 @@ def mongo_connect(user, pwd):
     return database, connection
 
 
-def get_file(job_id, user_id):
+def get_file(jar_hash):
     db, con = mongo_connect(MONGO_RO_USER, MONGO_RO_PWD)
     grid = gridfs.GridFS(db)
-    r = grid.get(db.fs.files.find_one({'job_id':job_id, 'user_id':user_id})['_id']).read()
+    r = grid.get(db.fs.files.find_one({'jar_hash':jar_hash})['_id']).read()
     con.close()
     return r
 
 
-def put_file(fname, user_id, job_id):
+def put_file(jar, jar_hash):
     db, con = mongo_connect(MONGO_RW_USER, MONGO_RW_PWD)
     grid = gridfs.GridFS(db)
-    r = grid.put(fname, user_id=user_id, job_id=job_id)
+    
+    if grid.exists({"jar_hash": jar_hash}):
+        return None
+
+    r = grid.put(jar, jar_hash=jar_hash)
     con.close()
     return r
 
