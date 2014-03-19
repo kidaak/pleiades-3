@@ -113,6 +113,7 @@ class Gatherer():
                     job_id = sim['job_id']
                     sim_id = sim['sim_id']
                     job_name = sim['job_name']
+                    jar_hash = sim['jar_hash']
                     output_dir = os.path.join(RESULTS_DIR, user_id, job_name, str(job_id), str(sim_id))
 
                     print "Gathering ", job_name, 'into', sim['file_name']
@@ -130,7 +131,9 @@ class Gatherer():
                         rmtree(output_dir[:output_dir.rfind(os.path.sep)])
 
                         db.xml.remove(to_find)
-                        db.fs.files.remove(to_find)
+
+                    if db.jobs.find_one({'jar_hash':jar_hash}) == None:
+                        db.fs.files.remove({'jar_hash':jar_hash})
 
                     if db.jobs.find_one({'job_name':job_name}) == None:
                         try:

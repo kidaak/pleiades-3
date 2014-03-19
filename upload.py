@@ -1,4 +1,5 @@
 #!/usr/bin/python2
+from lxml import etree
 from pysage import *
 from settings import *
 from messages import *
@@ -55,7 +56,13 @@ class Uploader(Actor):
 
         try:
             with open(xmlfile, 'r') as xml:
+                parser = etree.XMLParser(remove_blank_text=True)
+                tree = etree.parse(xml, parser)
+                xml.seek(0, 0)          
                 x = xml.read().encode('zlib').encode('base64')
+        except etree.XMLSyntaxError as e:
+            print('XML Syntax Error in {0}:\n{1}'.format(xml, e.message))
+            sys.exit(1)
         except:
             print 'Error reading XML file'
             sys.exit(1)
@@ -63,6 +70,7 @@ class Uploader(Actor):
         try:
             with open(options.jarfile, 'rb') as jar:
                 j = jar.read().encode('zlib').encode('base64')
+                jar_hash = hashlib.md5(j).hexdigest()
         except:
             print 'Error reading JAR file'
             sys.exit(1)
@@ -79,6 +87,7 @@ class Uploader(Actor):
             'type':self.args.type,
             'socket':sock.getsockname(),
             'm_size':len(j),
+            'jar_hash': jar_hash,
             'xml':x,
             'name':name
         }))
