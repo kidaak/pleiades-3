@@ -16,6 +16,7 @@ import os, os.path
 import sys
 import random
 import re
+import psutil
 
 HEADER = '''
   _____  _      _           _
@@ -27,7 +28,7 @@ HEADER = '''
 '''
 
 class Worker(Actor):
-    subscriptions = ['JobMessage', 'NoJobMessage', 'AckResultMessage', 'RmJarMessage']
+    subscriptions = ['JobMessage', 'NoJobMessage', 'AckResultMessage']#, 'RmJarMessage']
 
     def __init__(self, worker_id):
         self.log = get_logger(worker_id)
@@ -107,7 +108,7 @@ class Worker(Actor):
             self.send_status('Starting job', job_id, sim_id, user_id, sample)
 
             out_name = os.path.join('results', self.worker_id)
-            jar_name = os.path.join('jars', '%s_%i_%s.run' % (user_id, job_id, self.worker_id))
+            jar_name = os.path.join('jars', '%s_%s.run' % (jar_hash, self.worker_id))
             xml_name = os.path.join('xmls', '%s_%i_%i_%i.xml' % (user_id, job_id, sim_id, sample))
 
             set_status('Writing input files')
@@ -207,21 +208,10 @@ class Worker(Actor):
 
         return True
 
-
-    def handle_RmJarMessage(self, msg):
-        m = msg.get_property('msg')
-        jar_file = os.path.join('jars', '%s_%i_%s.run' % (m['user_id'], m['job_id'], self.worker_id))
-
-        if os.path.exists(jar_file):
-            self.log.info('Removing jar: %s' % jar_file)
-            os.remove(jar_file)
-
-        return False
-
-
     def handle_NoJobMessage(self, msg):
         self.send_status('No job', -1, -1, '', -1)
         time.sleep(5)
+        self.connect()
         self.send_job_request()
         return True
 
@@ -236,13 +226,16 @@ class Worker(Actor):
 
 
     def update(self):
+        self.log.info('[update]')
+        self.log.info(str(self.mgr.active_queue))
         if time.time() - self.ack_timer > ACK_TIMEOUT:
             self.log.info('ACK timeout: reconnecting')
             self.connect()
             self.send_job_request()
+            self.log.info('Request sent')
 
 
-class WorkerProgress(Actor):
+class NodeManager(Actor):
     subscriptions = ['StatusMessage', 'JoinMessage', 'DyingMessage']
 
     def __init__(self, w_count, quiet=False):
@@ -293,7 +286,7 @@ class WorkerProgress(Actor):
             screen = curses.newpad(1024, 1024)
             screen.scrollok(True)
 
-        print_timer = progress_timer = timeout_timer = time.time()
+        print_timer = progress_timer = timeout_timer = jar_timer = status_timer = time.time()
         while True:
             try:
                 # If worker has not sent status in last WORKER_RESTART_TIMEOUT min, restart it
@@ -365,6 +358,40 @@ class WorkerProgress(Actor):
                             con.close()
                         progress_timer = time.time()
 
+                #Delete old jars
+                if time.time() - jar_timer > 300:
+                    try:
+                        all_jars = get_all_file_hashes()
+
+                        for file in os.listdir('jars'):
+                            delete = True
+
+                            for j in all_jars:
+                                if str(file).startswith(str(j)):
+                                    delete = False
+
+                            if delete:
+                                del_file = os.path.join('jars', file)
+                                os.remove(del_file)
+                    except Exception, e:
+                        self.log.exception('Error while deleting jars:\n' + str(e))
+                        self.ex_log.exception('Error while deleting jars:\n' + str(e))
+                    finally:
+                        jar_timer = time.time()
+
+                #report node status every 10 seconds
+                if time.time() -status_timer > 10:
+                    ip = get_local_ip()
+                    cpu = psutil.cpu_percent()
+                    mem = psutil.phymem_usage()[3]
+                    disk = psutil.disk_usage('/home')[3]
+
+                    db.health.update({'node_id':ip}, {'$push': {'cpu': {'$each':[cpu], '$slice': -120}}}, True)
+                    db.health.update({'node_id':ip}, {'$push': {'mem': {'$each':[mem], '$slice': -120}}}, True)
+                    db.health.update({'node_id':ip}, {'$push': {'disk': {'$each':[disk], '$slice': -120}}}, True)
+
+                    status_timer = time.time();
+
                 self.mgr.tick()
             except KeyboardInterrupt, SystemExit:
                 self.mgr.clear_process_group()
@@ -403,9 +430,9 @@ class WorkerProgress(Actor):
                 self.mgr.remove_process_group(e.group_name)
                 self.mgr.add_process_group(e.group_name, lambda: Worker(e.group_name))
 
-            except Exception, e:
+            except Exception as e:
                 self.ex_log.exception('ERRORORROR')
-                self.log.info('Exception: ' + e.value)
+                self.log.info('Exception: ' + str(e))
 
 
 mgr = ActorManager.get_singleton()
@@ -418,7 +445,7 @@ if __name__ == '__main__':
     quiet = 'q' in sys.argv
 
     mgr.enable_groups()
-    p = WorkerProgress(w_count, quiet)
+    p = NodeManager(w_count, quiet)
     mgr.register_actor(p)
 
     if quiet:

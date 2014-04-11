@@ -32,6 +32,12 @@ def get_file(jar_hash):
     con.close()
     return r
 
+def get_all_file_hashes():
+    db, con = mongo_connect(MONGO_RO_USER, MONGO_RO_PWD)
+    jars = db.fs.files.find({},{'jar_hash': 1, '_id': 0})
+    con.close()
+
+    return [j['jar_hash'] for j in jars]
 
 def put_file(jar, jar_hash):
     db, con = mongo_connect(MONGO_RW_USER, MONGO_RW_PWD)
