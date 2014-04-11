@@ -65,7 +65,7 @@ class UploadServer(Actor):
                     'user_id': user,
                     'job_name': job['name'],
                     'file_name': j[2],
-                    'samples': range(1, j[1] + 1),
+                    'samples': range(1, int(j[1]) + 1),
                     'total_samples': j[1],
                     'job_id': job_id,
                     'sim_id': j[0],

@@ -66,7 +66,7 @@ def upload_xml(file, job, user):
     jobs = []
     i = 0
     for s in samples:
-        jobs.append((i, int(samples[i]), filenames[i]))
+        jobs.append((i, samples[i], filenames[i]))
         i += 1
 
     return jobs
