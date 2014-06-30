@@ -49,7 +49,11 @@ class UploadServer(Actor):
             jar_hash = job['jar_hash']
 
             # Upload XML
-            jobs = upload_xml(StringIO(job['xml'].decode('base64').decode('zlib')), job_id, user)
+            xml = job['xml'].decode('base64').decode('zlib')
+            if os.path.isfile(xml): # use local file if it exists
+                with open(xml, 'r') as xml_file:
+                    xml = xml_file.read()
+            jobs = upload_xml(StringIO(xml), job_id, user)
 
             if jobs != None:
                 # Transfer jar

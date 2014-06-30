@@ -8,6 +8,9 @@ from subprocess import *
 from traceback import *
 from socket import *
 from smb.SMBConnection import SMBConnection
+from Queue import Queue, Empty
+from threading import Thread
+from multiprocessing import Value
 import logging
 import curses
 import time
@@ -58,6 +61,7 @@ class Worker(Actor):
                 if self.mgr.transport._is_connected:
                     connected = True
             except:
+                self.log.exception('Connecting error')
                 time.sleep(RECONNECT_TIME)
 
         self.log.info('Connected to distribution server.')
@@ -105,6 +109,7 @@ class Worker(Actor):
             sample = sim['sample']
             jar_hash = sim['jar_hash']
 
+            set_status('Starting job %d %d %s %d' % (job_id, sim_id, user_id, sample))
             self.send_status('Starting job', job_id, sim_id, user_id, sample)
 
             out_name = os.path.join('results', self.worker_id)
@@ -127,63 +132,96 @@ class Worker(Actor):
                 with open(jar_name, 'wb') as jar_file:
                     jar_file.write(get_file(jar_hash))
 
-            process = Popen(['java', '-jar', jar_name, xml_name], stdout=PIPE, stderr=PIPE)
+            process = Popen(['java', '-server', '-Xmx2500M', '-jar', jar_name, xml_name], stdout=PIPE, stderr=PIPE)
             p_timer = time.time()
 
+            # Non-blocking process io: http://stackoverflow.com/questions/375427/non-blocking-read-on-a-subprocess-pipe-in-python
+            def enqueue_output(stream, queue, running):
+                while running.value:
+                    queue.put(stream.read(128))
+
+            out_q = Queue()
+            err_q = Queue()
+            running = Value('b', True)
+
+            out_t = Thread(target=enqueue_output, args=(process.stdout, out_q, running))
+            out_t.daemon = True
+            out_t.start()
+
+            err_t = Thread(target=enqueue_output, args=(process.stderr, err_q, running))
+            err_t.daemon = True
+            err_t.start()
+
+            set_status('Execution started')
             while process.poll() == None:
-                status = process.stdout.read(128)
+                try:
+                    self.errors += err_q.get_nowait()
+                    self.log.info(self.errors) # break here?
+                except Empty:
+                    pass
 
-                if time.time() - p_timer > 0.3:
-                    try:
+                try:
+                    status = out_q.get(timeout=.1)
+
+                    if time.time() - p_timer > 0.3:
                         s = re.findall('\(.*?\)', status)[-1]
-                    except:
-                        s = ''
+                        self.send_status(s, job_id, sim_id, user_id, sample)
 
-                    self.send_status(s, job_id, sim_id, user_id, sample)
-                    p_timer = time.time()
+                        p_timer = time.time()
+                except:
+                    pass
+
+            running.value = False
 
             os.remove(xml_name)
             set_status('Execution finished')
 
             p1, p2 = process.communicate()
-            self.errors = p2
+            self.errors += p2
             if self.errors:
                 set_status(self.errors)
                 raise Exception('CIlib error')
 
-            else:
-                set_status('Posting results')
-                with open(out_name, 'r') as result_file:
-                    conn = SMBConnection(SMB_USER, SMB_PWD, '', '', use_ntlm_v2=True)
-                    assert conn.connect(SMB_IP, timeout=SMB_TIMEOUT)
-                    conn.storeFile(SMB_SHARE, "%s_%i_%i_%i.txt" % (user_id, job_id, sim_id, sample), result_file, timeout=SMB_TIMEOUT)
-                    conn.close()
+            set_status('Posting results')
+            with open(out_name, 'r') as result_file:
+                conn = SMBConnection(SMB_USER, SMB_PWD, '', '', use_ntlm_v2=True)
+                assert conn.connect(SMB_IP, timeout=SMB_TIMEOUT)
 
-                os.remove(out_name)
+                newFile = "%s_%i_%i_%i.txt" % (user_id, job_id, sim_id, sample)
+                existingFiles = [i.filename for i in conn.listPath(SMB_SHARE, '/')]
 
-                set_status('Result notification')
-                self.connect()
-                self.mgr.broadcast_message(ResultMessage(msg={
-                    'job_id': job_id,
-                    'sim_id': sim_id,
-                    'user_id': user_id,
-                    'sample': sample,
-                    'jar_hash': jar_hash,
-                    'worker_id': self.worker_id
-                }))
+                if newFile in existingFiles:
+                    conn.deleteFiles(SMB_SHARE, newFile, timeout=SMB_TIMEOUT)
 
-                set_status('Status update')
-                self.send_status('Done', job_id, sim_id, user_id, sample)
-                set_status('Job Done')
+                conn.storeFile(SMB_SHARE, newFile, result_file, timeout=SMB_TIMEOUT)
+                conn.close()
+
+            os.remove(out_name)
+
+            set_status('Result notification')
+            self.connect()
+            self.mgr.broadcast_message(ResultMessage(msg={
+                'job_id': job_id,
+                'sim_id': sim_id,
+                'user_id': user_id,
+                'sample': sample,
+                'jar_hash': jar_hash,
+                'worker_id': self.worker_id
+            }))
+
+            set_status('Status update')
+            self.send_status('Done', job_id, sim_id, user_id, sample)
+            set_status('Job Done')
         except error:
             self.log.info('con error')
             self.connect()
-            #TODO: and then?
+            self.send_job_request()
+            #TODO: and then? did that ^ fix it?
 
         except Exception, e:
             try:
-                print self.status
                 self.log.exception('Worker job error')
+                self.log.exception(self.status)
                 self.connect()
                 self.mgr.broadcast_message(JobErrorMessage(msg={
                     'job_id': job_id,
@@ -207,6 +245,7 @@ class Worker(Actor):
             self.ack_timer = time.time()
 
         return True
+
 
     def handle_NoJobMessage(self, msg):
         self.send_status('No job', -1, -1, '', -1)
@@ -383,11 +422,13 @@ class NodeManager(Actor):
                 if time.time() -status_timer > 10:
                     ip = get_local_ip()
                     cpu = psutil.cpu_percent()
-                    mem = psutil.phymem_usage()[3]
+                    mem = psutil.virtual_memory()[2]
+                    swap = psutil.swap_memory()[3]
                     disk = psutil.disk_usage('/home')[3]
 
                     db.health.update({'node_id':ip}, {'$push': {'cpu': {'$each':[cpu], '$slice': -120}}}, True)
                     db.health.update({'node_id':ip}, {'$push': {'mem': {'$each':[mem], '$slice': -120}}}, True)
+                    db.health.update({'node_id':ip}, {'$push': {'swap': {'$each':[swap], '$slice': -120}}}, True)
                     db.health.update({'node_id':ip}, {'$push': {'disk': {'$each':[disk], '$slice': -120}}}, True)
 
                     status_timer = time.time();
@@ -405,15 +446,16 @@ class NodeManager(Actor):
                     if not p.is_alive():
                         self.log.info('Con error: Restarting ' + g)
                         self.mgr.remove_process_group(g)
-                        self.mgr.add_process_group(g)
+                        self.mgr.add_process_group(g, lambda: Worker(g))
 
             except EOFError, e:
                 self.ex_log.exception('Con Error (IPC recv)')
+                self.log.info('Con Error (IPC recv)')
                 for g, (p, _id, b) in self.mgr.groups.items():
                     if not p.is_alive():
                         self.log.info('Con Error (IPC recv): Restarting ' + g)
                         self.mgr.remove_process_group(g)
-                        self.mgr.add_process_group(g)
+                        self.mgr.add_process_group(g, lambda: Worker(g))
 
             except IOError:
                 self.ex_log.exception('Worker died (IPC poll)')
@@ -422,7 +464,7 @@ class NodeManager(Actor):
                     if not p.is_alive():
                         self.log.info('Worker died (IPC poll): Restarting ' + g)
                         self.mgr.remove_process_group(g)
-                        self.mgr.add_process_group(g)
+                        self.mgr.add_process_group(g, lambda: Worker(g))
 
             except GroupFailed, e:
                 self.ex_log.exception('Worker died (group)')

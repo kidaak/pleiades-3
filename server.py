@@ -15,7 +15,8 @@ from random import *
 ERROR_TEMPLATE = '''
 Dear %s,
 
-There was the following error with simulation number %i in job %s.
+There was the following error with simulation number %i in job %s
+running on worker %s.
 
 The status of the error is:
 %s
@@ -143,11 +144,19 @@ class DistributionServer(Actor):
             job['jar_hash'] = jar_hash
             del(job['_id'])
 
-            self.mgr.send_message(JobMessage(msg=job), msg.sender)
+            try:
+                self.mgr.send_message(JobMessage(msg=job), msg.sender)
 
-            for in_running in self.db.running.find({'worker_id': worker_id}):
-                self.replenish_job(in_running['user_id'], in_running['job_id'], in_running['sim_id'], in_running['sample'])
-                self.db.running.remove(in_running)
+                for in_running in self.db.running.find({'worker_id': worker_id}):
+                    self.replenish_job(in_running['user_id'], in_running['job_id'], in_running['sim_id'], in_running['sample'])
+                    self.db.running.remove(in_running)
+            except transport.NotConnectedException:
+                # Couldn't send job? Prolly cos of constant reconnecting
+                self.log.info('Job not sent. Worker not connected: ' + worker_id)
+                print 'Job not sent. Worker not connected: ' + worker_id
+
+                self.replenish_job(job['user_id'], job['job_id'], job['sim_id'], job['sample'])
+                return True
 
             self.db.running.insert({
                 'job_id': job['job_id'],
@@ -200,7 +209,7 @@ class DistributionServer(Actor):
                 job_name = sim['job_name']
                 jar_hash = sim['jar_hash']
                 self.db.jobs.remove(sim)
-                sendmail(user_id, ERROR_TEMPLATE % (user_id, sim_id, job_name, error))
+                sendmail(user_id, ERROR_TEMPLATE % (user_id, sim_id, job_name, worker_id, error))
                 print 'Removed job:', user_id, job_id, sim_id
                 self.log.info('Removed job: %s %i %i %i' % (user_id, job_id, sim_id, sample))
 
@@ -269,7 +278,8 @@ class DistributionServer(Actor):
             else:
                 self.log.info('ERROR: Result file not moved')
 
-            sim['results'].append(file_name)
+            if not file_name in sim['results']:
+                sim['results'].append(file_name)
             self.db.jobs.save(sim)
 
         except Exception, e:
