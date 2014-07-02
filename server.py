@@ -209,7 +209,7 @@ class DistributionServer(Actor):
                 job_name = sim['job_name']
                 jar_hash = sim['jar_hash']
                 self.db.jobs.remove(sim)
-                sendmail(user_id, ERROR_TEMPLATE % (user_id, sim_id, job_name, worker_id, error))
+                sendmail(user_id, ERROR_TEMPLATE % (user_id, sim_id, job_name, worker_id, error), self.log)
                 print 'Removed job:', user_id, job_id, sim_id
                 self.log.info('Removed job: %s %i %i %i' % (user_id, job_id, sim_id, sample))
 
@@ -218,7 +218,7 @@ class DistributionServer(Actor):
                     # leave the directory in case there is salvageable stuff? it could get removed though
                     self.db.xml.remove(to_find)
 
-                    sendmail(user_id, 'Your job, ' + sim['job_name'] + ', is complete.')
+                    sendmail(user_id, 'Your job, ' + sim['job_name'] + ', is complete.', self.log)
                     self.log.info('Email sent: Your job, ' + sim['job_name'] + ', is complete.')
 
                 if self.db.jobs.find_one({'jar_hash':jar_hash}) == None:

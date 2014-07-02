@@ -50,7 +50,7 @@ class UploadServer(Actor):
 
             # Upload XML
             xml = job['xml'].decode('base64').decode('zlib')
-            if os.path.isfile(xml): # use local file if it exists
+            if os.path.isfile(xml):
                 with open(xml, 'r') as xml_file:
                     xml = xml_file.read()
             jobs = upload_xml(StringIO(xml), job_id, user)

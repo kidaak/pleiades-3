@@ -31,7 +31,7 @@ HEADER = '''
 '''
 
 class Worker(Actor):
-    subscriptions = ['JobMessage', 'NoJobMessage', 'AckResultMessage']#, 'RmJarMessage']
+    subscriptions = ['JobMessage', 'NoJobMessage', 'AckResultMessage']
 
     def __init__(self, worker_id):
         self.log = get_logger(worker_id)
@@ -132,7 +132,7 @@ class Worker(Actor):
                 with open(jar_name, 'wb') as jar_file:
                     jar_file.write(get_file(jar_hash))
 
-            process = Popen(['java', '-server', '-Xmx2500M', '-jar', jar_name, xml_name], stdout=PIPE, stderr=PIPE)
+            process = Popen(['java', '-server', '-Xmx2400M', '-jar', jar_name, xml_name], stdout=PIPE, stderr=PIPE)
             p_timer = time.time()
 
             # Non-blocking process io: http://stackoverflow.com/questions/375427/non-blocking-read-on-a-subprocess-pipe-in-python
@@ -140,26 +140,19 @@ class Worker(Actor):
                 while running.value:
                     queue.put(stream.read(128))
 
-            out_q = Queue()
-            err_q = Queue()
+            def create_thread_queue(stream, running):
+                q = Queue()
+                t = Thread(target=enqueue_output, args=(stream, q, running))
+                t.daemon = True
+                t.start()
+                return q
+
             running = Value('b', True)
-
-            out_t = Thread(target=enqueue_output, args=(process.stdout, out_q, running))
-            out_t.daemon = True
-            out_t.start()
-
-            err_t = Thread(target=enqueue_output, args=(process.stderr, err_q, running))
-            err_t.daemon = True
-            err_t.start()
+            out_q = create_thread_queue(process.stdout, running)
+            err_q = create_thread_queue(process.stderr, running)
 
             set_status('Execution started')
             while process.poll() == None:
-                try:
-                    self.errors += err_q.get_nowait()
-                    self.log.info(self.errors) # break here?
-                except Empty:
-                    pass
-
                 try:
                     status = out_q.get(timeout=.1)
 
@@ -171,13 +164,16 @@ class Worker(Actor):
                 except:
                     pass
 
+            # Stop the queue threads
             running.value = False
+
+            # Get the error if it exists, only needed here because thread is constantly checking the pipe
+            while not err_q.empty():
+                self.errors += err_q.get(False)
 
             os.remove(xml_name)
             set_status('Execution finished')
 
-            p1, p2 = process.communicate()
-            self.errors += p2
             if self.errors:
                 set_status(self.errors)
                 raise Exception('CIlib error')
@@ -265,8 +261,6 @@ class Worker(Actor):
 
 
     def update(self):
-        self.log.info('[update]')
-        self.log.info(str(self.mgr.active_queue))
         if time.time() - self.ack_timer > ACK_TIMEOUT:
             self.log.info('ACK timeout: reconnecting')
             self.connect()
@@ -274,7 +268,7 @@ class Worker(Actor):
             self.log.info('Request sent')
 
 
-class NodeManager(Actor):
+class WorkerProgress(Actor):
     subscriptions = ['StatusMessage', 'JoinMessage', 'DyingMessage']
 
     def __init__(self, w_count, quiet=False):
@@ -328,24 +322,6 @@ class NodeManager(Actor):
         print_timer = progress_timer = timeout_timer = jar_timer = status_timer = time.time()
         while True:
             try:
-                # If worker has not sent status in last WORKER_RESTART_TIMEOUT min, restart it
-                '''if time.time() - timeout_timer > 60:
-                    for k, v in self.workers.iteritems():
-                        if time.time() - v['time'] > WORKER_RESTART_TIMEOUT:
-                            self.log.info('Periodic check: Restarting ' + k)
-                            self.mgr.remove_process_group(k)
-                            self.workers[k] = {
-                                'status': 'Init',
-                                'user_id': '',
-                                'sim_id': -1,
-                                'job_id': -1,
-                                'sample': -1,
-                                'time': time.time()
-                            }
-                            self.mgr.add_process_group(k, lambda: Worker(k))
-                    self.log.info(str(len(self.mgr.groups)) + ' workers')
-                    timeout_timer = time.time()'''
-
                 # Print to screen
                 if time.time() - print_timer > 0.3 and not self.quiet:
                     try:
@@ -380,7 +356,7 @@ class NodeManager(Actor):
                     except curses.error:
                         self.ex_log.exception('Curses error')
 
-                # Upload progress every minute
+                # Upload progress every PROGRESS_UPDATE_INTERVAL seconds
                 if time.time() - progress_timer > PROGRESS_UPDATE_INTERVAL:
                     con = None
                     try:
@@ -419,7 +395,7 @@ class NodeManager(Actor):
                         jar_timer = time.time()
 
                 #report node status every 10 seconds
-                if time.time() -status_timer > 10:
+                if time.time() - status_timer > 10:
                     ip = get_local_ip()
                     cpu = psutil.cpu_percent()
                     mem = psutil.virtual_memory()[2]
@@ -487,7 +463,7 @@ if __name__ == '__main__':
     quiet = 'q' in sys.argv
 
     mgr.enable_groups()
-    p = NodeManager(w_count, quiet)
+    p = WorkerProgress(w_count, quiet)
     mgr.register_actor(p)
 
     if quiet:

@@ -52,7 +52,6 @@ class Gatherer():
             self.log.info('Samples')
             measurements = []
             for f in sim['results']:
-                self.log.info(f)
                 with open(f, 'r') as sample:
                     measurements.append([line for line in sample if not line.startswith('#')])
 
@@ -74,7 +73,6 @@ class Gatherer():
 
             # Join data
             self.log.info('Joining')
-            self.log.info(str(lines))
             joined = '\n'.join([i[0].split(' ')[0] + ' ' + ' '.join([j.split(' ')[k]
                                            for k in range(1, noMeasurements + 1)
                                            for j in i])
@@ -140,10 +138,7 @@ class Gatherer():
                         db.fs.files.remove({'jar_hash':jar_hash})
 
                     if db.jobs.find_one({'job_name':job_name}) == None:
-                        try:
-                            sendmail(user_id, COMPLETE_TEMPLATE % (user_id, job_name))
-                        except:
-                            print "Could not send email."
+                        sendmail(user_id, COMPLETE_TEMPLATE % (user_id, job_name), self.log)
 
             except Exception, e:
                 print "ERROR", e
