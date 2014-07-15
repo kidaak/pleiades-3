@@ -102,18 +102,21 @@ def sendall(sock, data):
         data = data[sent:]
 
 
-def sendmail(user, msg):
+def sendmail(user, msg, log):
     #TODO: put these details in settings.py
-    email_addr = get_user_email(user)
+    try:
+        email_addr = get_user_email(user)
 
-    msg = MIMEText(msg)
-    msg['Subject'] = 'Pleiades Cluster Notification'
-    msg['From'] = 'Pleiades Cluster<no-reply@cs.up.ac.za>'
-    msg['To'] = email_addr
+        msg = MIMEText(msg)
+        msg['Subject'] = 'Pleiades Cluster Notification'
+        msg['From'] = 'Pleiades Cluster<no-reply@cs.up.ac.za>'
+        msg['To'] = email_addr
 
-    s = SMTP('student.up.ac.za', 25, 'Pleiades')
-    s.sendmail('no-reply@cs.up.ac.za', [email_addr], msg.as_string())
-    s.quit()
+        s = SMTP('student.up.ac.za', 25, 'Pleiades')
+        s.sendmail('no-reply@cs.up.ac.za', [email_addr], msg.as_string())
+        s.quit()
+    except:
+        log.info('Could not send email: SMPT connection refused.')
 
 
 def get_logger(name):

@@ -24,7 +24,7 @@ class Gatherer():
 
     def gather_results(self, sim):
         try:
-            self.log.info("Started gathering " + sim['file_name'])
+            self.log.info("Started gathering %s %d %d into %s" % (sim['user_id'], sim['job_id'], sim['sim_id'], sim['file_name']))
             results = []
             measurements = []
 
@@ -69,7 +69,7 @@ class Gatherer():
             # Group lines by iteration
             self.log.info('Grouping')
             lines = [ [ i[j].strip().replace('\n', '') for i in measurements ] 
-                        for j in range(0, len(measurements[0])) ]
+                        for j in range(len(measurements[0])) ]
 
             # Join data
             self.log.info('Joining')
@@ -79,7 +79,6 @@ class Gatherer():
                                            for i in lines])
 
             file_path, file_name = os.path.split(sim['file_name'])
-            
             output_dir = os.path.join(RESULTS_DIR, sim['user_id'], sim['job_name'], file_path)
 
             if not os.path.exists(output_dir):
@@ -121,7 +120,10 @@ class Gatherer():
 
                     # Gather, clear temp files and remove sim
                     self.gather_results(sim)
-                    rmtree(output_dir)
+                    try:
+                        rmtree(output_dir)
+                    except OSError:
+                        self.log.info('Folder does not exist: ' + output_dir) #TODO: would this affect the db, should we just remove it and alert the user?
                     db.jobs.remove(sim)
 
                     # if job is complete clear everything, distributor will notify to remove jar
@@ -136,10 +138,7 @@ class Gatherer():
                         db.fs.files.remove({'jar_hash':jar_hash})
 
                     if db.jobs.find_one({'job_name':job_name}) == None:
-                        try:
-                            sendmail(user_id, COMPLETE_TEMPLATE % (user_id, job_name))
-                        except:
-                            print "Could not send email."
+                        sendmail(user_id, COMPLETE_TEMPLATE % (user_id, job_name), self.log)
 
             except Exception, e:
                 print "ERROR", e
